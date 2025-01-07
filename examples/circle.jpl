@@ -1,0 +1,15 @@
+let WIDTH = 800
+let HEIGHT = 600
+
+fn dist_to_center(r: int, c: int): float {
+  let dr = to_float(r - HEIGHT / 2)
+  let dc = to_float(c - WIDTH / 2)
+  return sqrt(dr * dr + dc * dc)
+}
+
+fn circle(rad: float, width: float) : rgba[,]{
+  return array[r : HEIGHT, c : WIDTH] if dist_to_center(r, c) > (rad - width / 2.0) && dist_to_center(r, c) < (rad + width / 2.0) then rgba{1.0, 1.0, 1.0, 1.0} else rgba{0.0, 0.0, 0.0, 1.0}
+} 
+
+
+write image circle(400.0, 10.0) to "circle.png"
