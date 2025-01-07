@@ -1,0 +1,16 @@
+fn invert(p : rgba) : rgba {
+  return rgba {  \
+      1.0 - p.r, \
+      1.0 - p.g, \
+      1.0 - p.b, \
+      p.a        \
+    }
+}
+
+
+read image "sample.png" to tmp 
+let input[H, W] = tmp
+let output = array[i: H, j: W] invert(input[i, j])
+write image output to "sample-inverted.png"
+
+
