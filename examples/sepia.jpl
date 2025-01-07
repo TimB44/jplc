@@ -1,0 +1,16 @@
+fn clamp(x: float) : float {
+  let t = if x > 1.0 then 1.0 else x 
+  return if t < 0.0 then 0.0 else t 
+}
+
+fn sepia(img[H, W]: rgba[,]) : rgba[,]{
+  return array[i: H, j: W] rgba {                                             \
+      clamp(0.393 * img[i, j].r + 0.769 * img[i, j].g + 0.189 * img[i, j].b), \
+      clamp(0.349 * img[i, j].r + 0.686 * img[i, j].g + 0.168 * img[i, j].b), \
+      clamp(0.272 * img[i, j].r + 0.534 * img[i, j].g + 0.131 * img[i, j].b), \
+      img[i, j].a                                                             \
+    }
+}
+
+read image "sample.png" to input 
+write image sepia(input) to "sample-sepia.png"
