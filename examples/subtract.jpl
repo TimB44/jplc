@@ -2,4 +2,4 @@ fn subtract(x: float, y: float) : float {
     return x - y
 }
 
-show subtract(10., 7.) 
+show subtract(1000000000.0, 0.1) 

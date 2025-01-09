@@ -1,18 +1,19 @@
 fn in_range(r: int, c: int, H: int, W: int): bool {
-  return r > 0 && c > 0 && r < H && c < W
+  return r >= 0 && c >= 0 && r < H && c < W
+}
+
+fn gen_pixel(img[H,W] : rgba[,], r: int, c: int): rgba {
+  let neighbors = (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then 1.0 else 0.0)
+  return rgba {                                                                                                            \
+    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].r else 0.0) / neighbors, \
+    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].g else 0.0) / neighbors, \
+    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].b else 0.0) / neighbors, \
+    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].a else 0.0) / neighbors  \
+  }
 }
 
 fn blur(img[H,W] : rgba[,]) : rgba[,]{
-  return array[r: H, c: W] rgba {                                                                             \
-    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].r else 0.0) \
-    / (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then 1.0 else 0.0),                        \
-    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].g else 0.0) \
-    / (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then 1.0 else 0.0),                        \
-    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].b else 0.0) \
-    / (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then 1.0 else 0.0),                        \
-    (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then img[r - 1 + dr, c - 1 + dc].a else 0.0) \
-    / (sum[dr: 3, dc: 3] if in_range(r - 1 + dr, c - 1 + dc, H, W) then 1.0 else 0.0)                         \
-  }
+  return array[r: H, c: W] gen_pixel(img, r, c)
 }
 
 read image "sample.png" to input 
