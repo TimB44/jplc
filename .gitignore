@@ -3,3 +3,8 @@
 *a.out
 *.png
 grader/
+
+
+# Added by cargo
+
+/target
