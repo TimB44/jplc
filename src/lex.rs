@@ -8,16 +8,17 @@ static VARIABLE_REGEX: LazyLock<Regex> =
 static STRING_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"^"[ !#-~]*""#).expect("regex invalid"));
 
-static FLOAT_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:[0-9]+\.[0-9]*)|(?:[0-9]*\.[0-9]+").expect("regex invalid"));
+static FLOAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:(?:[0-9]+\.[0-9]*)|(?:[0-9]*\.[0-9]+))").expect("regex invalid")
+});
 
 static INT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[0-9]*").expect("regex invalid"));
 
 // This regex should match all valid white space and comments matching until it finds another
 // token. If the comment is invalid (single line comment with no newling or multi line comment
 // with no */) then it will not match. It will also capture the last unescaped newline in ln group.
-// This is used to determine if the text contained a newline and to find its location for the token
-//
+// This is used to determine if the text contained a newline and to find its location in the source
+// for the token
 static COMMENT_WHITESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:(?:/\*[\n -~]*?\*/)|(?://[ -~]*\n)|(?:\\\n)|(?<ln>\n)|(?: ))+")
         .expect("regex invalid")
@@ -162,21 +163,15 @@ impl<'a> Iterator for Lexer<'a> {
                     }
                 },
 
-                // Skip space character
-                Some(b' ') => {
-                    self.cur += 1;
-                    continue;
-                }
-
+                // TODO Be explicit about chars that can fall through
                 _ => (),
                 //TODO: check for invalid character
             };
 
-            // TODO: deal with \ and /
             // More complex single and double character tokens
-            match (self.bytes[self.cur], self.bytes.get(self.cur)) {
+            match (self.bytes[self.cur], self.bytes.get(self.cur + 1)) {
                 (b'=', Some(b'=')) => return Some(self.create_token(TokenType::Op, 2)),
-                (b'=', _) => return Some(self.create_token(TokenType::Op, 1)),
+                (b'=', _) => return Some(self.create_token(TokenType::Equals, 1)),
 
                 (b'>', Some(b'=')) => return Some(self.create_token(TokenType::Op, 2)),
                 (b'>', _) => return Some(self.create_token(TokenType::Op, 1)),
@@ -203,6 +198,7 @@ impl<'a> Iterator for Lexer<'a> {
                 }
 
                 // Single line comments and newlines
+                // These must contain a new line to lex
                 (b'/', Some(b'/')) | (b'\n', _) => {
                     match COMMENT_WHITESPACE_REGEX.captures(&self.bytes[self.cur..]) {
                         Some(c) => {
@@ -238,8 +234,9 @@ impl<'a> Iterator for Lexer<'a> {
                 //        });
                 //}
 
-                // Multi-line comments
-                (b'/', Some(b'*')) => {
+                // Multi-line comments and space character. These may not contain a newline,
+                // however a multi line comment must closed in order to lex
+                (b'/', Some(b'*')) | (b' ', _) => {
                     match COMMENT_WHITESPACE_REGEX.captures(&self.bytes[self.cur..]) {
                         Some(c) => {
                             let entire = c.get(0).unwrap();
@@ -357,7 +354,7 @@ impl<'a> Display for Token<'a> {
             TokenType::Newline => write!(f, "NEWLINE"),
             TokenType::Op => write!(f, "OP '{}'", self.bytes),
             TokenType::Print => write!(f, "PRINT 'print'"),
-            TokenType::RCurly => write!(f, "RCLURLY '}}'"),
+            TokenType::RCurly => write!(f, "RCURLY '}}'"),
             TokenType::Read => write!(f, "READ 'read'"),
             TokenType::Return => write!(f, "RETURN 'return'"),
             TokenType::RParen => write!(f, "RPAREN ')'"),
