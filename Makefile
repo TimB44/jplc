@@ -5,9 +5,8 @@ all: run
 compile: 
 	cargo build
 
-
 run: 
-	cargo run -- $(TEST)
+	cargo run -- -l $(TEST) 
 
 clean:
 	rm -fr *.class
