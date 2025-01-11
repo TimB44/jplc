@@ -3,8 +3,6 @@ use jplc::{cli::Args, compile};
 use std::{fs::read_to_string, process::exit};
 fn main() {
     let args = Args::parse();
-    // TODO: Remove assertion for future assignemtns
-    assert!(args.actions.lex, "Only lexing implemented");
 
     let source = read_to_string(&args.source).unwrap_or_else(|err| {
         eprintln!(
