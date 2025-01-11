@@ -12,7 +12,7 @@ static FLOAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:(?:[0-9]+\.[0-9]*)|(?:[0-9]*\.[0-9]+))").expect("regex invalid")
 });
 
-static INT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[0-9]*").expect("regex invalid"));
+static INT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[0-9]+").expect("regex invalid"));
 
 // This regex should match all valid white space and comments matching until it finds another
 // token. If the comment is invalid (single line comment with no newling or multi line comment
@@ -20,7 +20,7 @@ static INT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[0-9]*").expec
 // This is used to determine if the text contained a newline and to find its location in the source
 // for the token
 static COMMENT_WHITESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:(?:/\*[\n -~]*?\*/)|(?://[ -~]*\n)|(?:\\\n)|(?<ln>\n)|(?: ))+")
+    Regex::new(r"^(?:(?:/\*[\n -~]*?\*/)|(?://[ -~]*)|(?:\\\n)|(?<ln>\n)|(?: ))+")
         .expect("regex invalid")
 });
 
@@ -158,14 +158,36 @@ impl<'a> Iterator for Lexer<'a> {
                     }
                     None => {
                         //TODO: Better error message or return an error
-                        eprintln!("Unmatched \" found");
+                        println!("Compilation Failed: Unmatched \" found");
                         exit(1);
                     }
                 },
 
-                // TODO Be explicit about chars that can fall through
-                _ => (),
-                //TODO: check for invalid character
+                invalid_char @ (Some(0..=9) | Some(11..=31) | Some(127..)) => {
+                    println!(
+                        "Compilation failed: Invalid character {:02X?}",
+                        invalid_char.unwrap()
+                    );
+                    exit(1);
+                }
+
+                // These characters are valid in some locations (strings, comments, etc.), however
+                // they are never start a token
+                unexpected_char @ (Some(b'#') | Some(b'$') | Some(b'\'') | Some(b';')
+                | Some(b'?') | Some(b'@') | Some(b'^') | Some(b'_')
+                | Some(b'`') | Some(b'~')) => {
+                    println!(
+                        "Compilation failed: Unexpected character {}",
+                        unexpected_char.unwrap(),
+                    );
+
+                    exit(1);
+                }
+
+                // These will be lexed in the following match statment as they need info about the
+                // next char
+                Some(b'\n') | Some(b' ') | Some(b'=') | Some(b'>') | Some(b'<') | Some(b'!')
+                | Some(b'&') | Some(b'|') | Some(b'/') | Some(b'\\') => (),
             };
 
             // More complex single and double character tokens
@@ -185,14 +207,21 @@ impl<'a> Iterator for Lexer<'a> {
                 (b'&', Some(b'&')) => return Some(self.create_token(TokenType::Op, 2)),
                 (b'|', Some(b'|')) => return Some(self.create_token(TokenType::Op, 2)),
 
+                // If there arent 2 of them they can not start a vlid token
+                invalid_op @ ((b'|', _) | (b'&', _)) => {
+                    // TODO: better error, Mention that it takes 2 of them
+                    println!("Compilation failed: Unexpected character {}", invalid_op.0);
+                    exit(0);
+                }
+
                 // Skip over escaped newlines
                 (b'\\', Some(b'\n')) => {
                     self.cur += 2;
                     continue;
                 }
                 (b'\\', _) => {
-                    eprintln!(
-                        "Invalid \\ found. This can only be used in strings, comments, and to escape newline characters"
+                    println!(
+                        "Compilation failed: Invalid \\ found. This can only be used in strings, comments, and to escape newline characters"
                     );
                     exit(1);
                 }
@@ -219,20 +248,11 @@ impl<'a> Iterator for Lexer<'a> {
                         }
                         None => {
                             //TODO: better error messages. also should this be a lex error?
-                            eprintln!("Single line comment missing newline");
+                            println!("Compilation failed: Single line comment missing newline");
                             exit(1);
                         }
                     };
                 }
-                // => {
-                //    self.cur += self.bytes[self.cur..]
-                //        .iter()
-                //        .position(|&b| b == b'\n')
-                //        .unwrap_or_else(|| {
-                //            eprintln!("Unterminated single line comment");
-                //            exit(1);
-                //        });
-                //}
 
                 // Multi-line comments and space character. These may not contain a newline,
                 // however a multi line comment must closed in order to lex
@@ -256,7 +276,7 @@ impl<'a> Iterator for Lexer<'a> {
                         }
                         None => {
                             //TODO: better error messages.
-                            eprintln!("Unterminated multi-line comment");
+                            println!("Compilation failed: Unterminated multi-line comment");
                             exit(1);
                         }
                     };

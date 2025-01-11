@@ -5,8 +5,8 @@ fn main() {
     let args = Args::parse();
 
     let source = read_to_string(&args.source).unwrap_or_else(|err| {
-        eprintln!(
-            "Error: can not open given source file {} - {}",
+        println!(
+            "Compilation failed: can not open given source file {} - {}",
             args.source, err
         );
         exit(1);
