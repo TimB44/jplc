@@ -1,15 +1,13 @@
-# TODO: Update for rust
 TEST=test.jpl
 
 all: run
 
-compile: compiler.class
+compile: 
+	cargo build
 
-compiler.class: compiler.java
-	javac compiler.java
 
-run: compiler.class
-	java compiler $(TEST)
+run: 
+	cargo run -- $(TEST)
 
 clean:
 	rm -fr *.class
