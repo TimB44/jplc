@@ -2,9 +2,11 @@ use core::fmt::Display;
 use regex::bytes::Regex;
 use std::{collections::HashMap, process::exit, str, sync::LazyLock};
 
+// Matches variable tokens. This could also match keywords
 static VARIABLE_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^[a-zA-Z][a-zA-Z0-9_]*").expect("regex invalid"));
 
+//
 static STRING_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"^"[ !#-~]*""#).expect("regex invalid"));
 
@@ -15,12 +17,12 @@ static FLOAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 static INT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[0-9]+").expect("regex invalid"));
 
 // This regex should match all valid white space and comments matching until it finds another
-// token. If the comment is invalid (single line comment with no newling or multi line comment
-// with no */) then it will not match. It will also capture the last unescaped newline in ln group.
+// token. If the comment is invalid ( multi-line comment with no */) then it will not match.
+// It will also capture the last unescaped newline in the nl group.
 // This is used to determine if the text contained a newline and to find its location in the source
 // for the token
 static COMMENT_WHITESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(?:(?:/\*[\n -~]*?\*/)|(?://[ -~]*)|(?:\\\n)|(?<ln>\n)|(?: ))+")
+    Regex::new(r"^(?:(?:/\*[\n -~]*?\*/)|(?://[ -~]*)|(?:\\\n)|(?<nl>\n)|(?: ))+")
         .expect("regex invalid")
 });
 
@@ -134,8 +136,6 @@ impl<'a> Iterator for Lexer<'a> {
                 }
 
                 // Int and Floats Literals
-
-                // TODO: Should we check for constant overflow here?
                 Some(b'0'..=b'9') | Some(b'.') => {
                     match (
                         FLOAT_REGEX.find(&self.bytes[self.cur..]),
@@ -176,6 +176,7 @@ impl<'a> Iterator for Lexer<'a> {
                 unexpected_char @ (Some(b'#') | Some(b'$') | Some(b'\'') | Some(b';')
                 | Some(b'?') | Some(b'@') | Some(b'^') | Some(b'_')
                 | Some(b'`') | Some(b'~')) => {
+                    //TODO: Better error messages
                     println!(
                         "Compilation failed: Unexpected character {}",
                         unexpected_char.unwrap(),
@@ -207,7 +208,7 @@ impl<'a> Iterator for Lexer<'a> {
                 (b'&', Some(b'&')) => return Some(self.create_token(TokenType::Op, 2)),
                 (b'|', Some(b'|')) => return Some(self.create_token(TokenType::Op, 2)),
 
-                // If there arent 2 of them they can not start a vlid token
+                // If there arent 2 of them together they can not start a valid token
                 invalid_op @ ((b'|', _) | (b'&', _)) => {
                     // TODO: better error, Mention that it takes 2 of them
                     println!("Compilation failed: Unexpected character {}", invalid_op.0);
@@ -232,13 +233,13 @@ impl<'a> Iterator for Lexer<'a> {
                     match COMMENT_WHITESPACE_REGEX.captures(&self.bytes[self.cur..]) {
                         Some(c) => {
                             let entire = c.get(0).unwrap();
-                            let last_ln = c
-                                .name("ln")
+                            let last_nl = c
+                                .name("nl")
                                 .expect("match should contain newline due to regex pattern");
 
                             let t = Token {
-                                start: self.cur + last_ln.start(),
-                                bytes: str::from_utf8(last_ln.as_bytes())
+                                start: self.cur + last_nl.start(),
+                                bytes: str::from_utf8(last_nl.as_bytes())
                                     .expect("lexer bytes must come from a string"),
                                 kind: TokenType::Newline,
                             };
@@ -260,10 +261,10 @@ impl<'a> Iterator for Lexer<'a> {
                     match COMMENT_WHITESPACE_REGEX.captures(&self.bytes[self.cur..]) {
                         Some(c) => {
                             let entire = c.get(0).unwrap();
-                            if let Some(last_ln) = c.name("ln") {
+                            if let Some(last_nl) = c.name("nl") {
                                 let t = Token {
-                                    start: self.cur + last_ln.start(),
-                                    bytes: str::from_utf8(last_ln.as_bytes())
+                                    start: self.cur + last_nl.start(),
+                                    bytes: str::from_utf8(last_nl.as_bytes())
                                         .expect("lexer bytes must come from a string"),
                                     kind: TokenType::Newline,
                                 };
@@ -282,8 +283,8 @@ impl<'a> Iterator for Lexer<'a> {
                     };
                 }
 
-                // From here we know the slash can no be a comment so it is ok to assume it as
-                // division operator
+                // From here we know the slash can not be a comment so it is ok to assume it is
+                // a division operator
                 (b'/', _) => return Some(self.create_token(TokenType::Op, 1)),
 
                 _ => todo!(),
@@ -312,15 +313,11 @@ pub enum TokenType {
     Equals,
     False,
     Float,
-
-    // TODO: Do i need to check for overflow?
     FloatLit,
     Fn,
     If,
     Image,
     Int,
-
-    // TODO: should i check for overflow now or later
     IntLit,
     LCurly,
     Let,
