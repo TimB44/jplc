@@ -88,7 +88,7 @@ impl<'a> Lexer<'a> {
         };
 
         self.cur += len;
-        return token;
+        token
     }
 }
 
@@ -532,7 +532,7 @@ pub enum TokenType {
     Write,
 }
 
-impl<'a> Display for Token<'a> {
+impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind {
             TokenType::Array => write!(f, "ARRAY 'array'"),
