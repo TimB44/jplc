@@ -1,6 +1,9 @@
-use core::fmt::Display;
+use core::{fmt::Display, str};
+use miette::{miette, LabeledSpan, NamedSource, Severity};
 use regex::bytes::Regex;
-use std::{collections::HashMap, process::exit, str, sync::LazyLock};
+use std::sync::LazyLock;
+
+use crate::utils::exit_with_error;
 
 // Matches variable tokens. This could also match keywords
 static VARIABLE_REGEX: LazyLock<Regex> =
@@ -26,50 +29,50 @@ static COMMENT_WHITESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         .expect("regex invalid")
 });
 
-//TODO: use a pnf map instead https://docs.rs/phf/latest/phf/
-static KEYWORDS: LazyLock<HashMap<&[u8], TokenType>> = LazyLock::new(|| {
-    HashMap::from([
-        (b"array".as_slice(), TokenType::Array),
-        (b"assert", TokenType::Assert),
-        (b"bool", TokenType::Bool),
-        (b"else", TokenType::Else),
-        (b"equals", TokenType::Equals),
-        (b"false", TokenType::False),
-        (b"float", TokenType::Float),
-        (b"if", TokenType::If),
-        (b"image", TokenType::Image),
-        (b"int", TokenType::Int),
-        (b"let", TokenType::Let),
-        (b"fn", TokenType::Fn),
-        (b"print", TokenType::Print),
-        (b"read", TokenType::Read),
-        (b"return", TokenType::Return),
-        (b"show", TokenType::Show),
-        (b"struct", TokenType::Struct),
-        (b"sum", TokenType::Sum),
-        (b"then", TokenType::Then),
-        (b"time", TokenType::Time),
-        (b"to", TokenType::To),
-        (b"true", TokenType::True),
-        (b"void", TokenType::Void),
-        (b"write", TokenType::Write),
-    ])
-});
-
-//TODO: Keep track of lines and columns for better error messages
+fn bytes_to_keyword(bytes: &[u8]) -> Option<TokenType> {
+    match bytes {
+        b"array" => Some(TokenType::Array),
+        b"assert" => Some(TokenType::Assert),
+        b"bool" => Some(TokenType::Bool),
+        b"else" => Some(TokenType::Else),
+        b"equals" => Some(TokenType::Equals),
+        b"false" => Some(TokenType::False),
+        b"float" => Some(TokenType::Float),
+        b"if" => Some(TokenType::If),
+        b"image" => Some(TokenType::Image),
+        b"int" => Some(TokenType::Int),
+        b"let" => Some(TokenType::Let),
+        b"fn" => Some(TokenType::Fn),
+        b"print" => Some(TokenType::Print),
+        b"read" => Some(TokenType::Read),
+        b"return" => Some(TokenType::Return),
+        b"show" => Some(TokenType::Show),
+        b"struct" => Some(TokenType::Struct),
+        b"sum" => Some(TokenType::Sum),
+        b"then" => Some(TokenType::Then),
+        b"time" => Some(TokenType::Time),
+        b"to" => Some(TokenType::To),
+        b"true" => Some(TokenType::True),
+        b"void" => Some(TokenType::Void),
+        b"write" => Some(TokenType::Write),
+        _ => None,
+    }
+}
 
 /// Converts JPL source code into tokens.
 /// This struct implements the interator trait which outputs Tokens
 /// If a lex occurs then an error message will be printed and the process will exit
 #[derive(Debug, Clone, Copy)]
 pub struct Lexer<'a> {
+    source_name: &'a str,
     bytes: &'a [u8],
     cur: usize,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(source_name: &'a str, source: &'a str) -> Self {
         Lexer {
+            source_name,
             bytes: source.as_bytes(),
             cur: 0,
         }
@@ -83,6 +86,7 @@ impl<'a> Lexer<'a> {
                 .expect("lexer bytes must come from a string"),
             kind,
         };
+
         self.cur += len;
         return token;
     }
@@ -130,7 +134,7 @@ impl<'a> Iterator for Lexer<'a> {
                         .find(&self.bytes[self.cur..])
                         .expect("regex should match due to match arm")
                         .as_bytes();
-                    let kind = *KEYWORDS.get(var).unwrap_or(&TokenType::Variable);
+                    let kind = bytes_to_keyword(var).unwrap_or(TokenType::Variable);
 
                     return Some(self.create_token(kind, var.len()));
                 }
@@ -157,33 +161,172 @@ impl<'a> Iterator for Lexer<'a> {
                         return Some(self.create_token(TokenType::StringLit, str_lit.len()))
                     }
                     None => {
-                        //TODO: Better error message or return an error
-                        println!("Compilation Failed: Unmatched \" found");
-                        exit(1);
+                        let next_newline = self.bytes[self.cur..]
+                            .iter()
+                            .position(|&b| b == b'\n')
+                            .map(|b| b + self.cur)
+                            .unwrap_or(self.bytes.len() - 1);
+
+                        exit_with_error(
+                            miette!(
+                                severity = Severity::Error,
+                                labels = vec![
+                                    LabeledSpan::at_offset(self.cur, "String literal started here"),
+                                    LabeledSpan::at_offset(next_newline, "Add \" here")
+                                ],
+                                help = "String literals cannot span multiple lines",
+                                "String literal is not terminated"
+                            )
+                            .with_source_code(NamedSource::new(
+                                self.source_name,
+                                self.bytes.to_vec(),
+                            )),
+                        )
                     }
                 },
 
-                invalid_char @ (Some(0..=9) | Some(11..=31) | Some(127..)) => {
-                    println!(
-                        "Compilation failed: Invalid character {:02X?}",
-                        invalid_char.unwrap()
-                    );
-                    exit(1);
-                }
+                // Invalid characters
+                Some(b'\t') => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(self.cur, "Tab character found here")],
+                        help = "Tabs are not allowed in jpl. Replace them with spaces.",
+                        "Invalid tab character"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
+
+                Some(b'\r') => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(
+                            self.cur,
+                            "Carriage return found here"
+                        )],
+                        help = "Windows-style line endings ('\\r\\n') are not allowed in jpl. Use '\\n' instead.",
+                        "Invalid carriage return"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
+                Some(0..=8) | Some(11..=12) | Some(14..=31) | Some(127) => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(self.cur, "Invalid control character found here")],
+                        help = "Control characters are not allowed in jpl. Remove them.",
+                        "Invalid control character"
+
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
+
+                Some(128..) => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(self.cur, "Non-ASCII character found here")],
+                        help = "Only ASCII characters are allowed in jpl. Remove or replace the invalid character.",
+                        "Invalid non-ASCII character"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
 
                 // These characters are valid in some locations (strings, comments, etc.), however
                 // they are never start a token
-                unexpected_char @ (Some(b'#') | Some(b'$') | Some(b'\'') | Some(b';')
-                | Some(b'?') | Some(b'@') | Some(b'^') | Some(b'_')
-                | Some(b'`') | Some(b'~')) => {
-                    //TODO: Better error messages
-                    println!(
-                        "Compilation failed: Unexpected character {}",
-                        unexpected_char.unwrap(),
-                    );
 
-                    exit(1);
-                }
+                // Could be confused with a comment
+                Some(b'#') => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(self.cur, "Unexpected '#' found here")],
+                        help = "If you're trying to write a comment, use // or /* ... */ instead of '#'.",
+                        "Unexpected '#' character"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
+
+                // Could be confused with double quotes for string literals
+                invalid_quotes @ (Some(b'\'') | Some(b'`'))=> {
+                    let invalid_quotes = invalid_quotes.unwrap();
+                    let matching = self.bytes[self.cur..]
+                        .iter()
+                        .skip(1)
+                        .take_while(|&&b| b != b'\n')
+                        .position(|c| c == invalid_quotes)
+                        .map(|o| o + 1) ;
+
+                    if let Some(other_quote_offset) = matching {
+                        exit_with_error(
+                     miette!(
+                            severity = Severity::Error,
+                            labels = vec![
+                                LabeledSpan::at_offset(self.cur, "Opening quote here"),
+                                LabeledSpan::at_offset(self.cur + other_quote_offset, "Closing quote here")
+
+                            ],
+                            help = "Use \" for string literals instead",
+                            "Unexpected {} character", *invalid_quotes as char,
+                            )
+                            .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                        )
+                    }
+                     else {
+                        exit_with_error(
+                     miette!(
+                            severity = Severity::Error,
+                            labels = vec![LabeledSpan::at_offset(self.cur, "Unexpected '{invalid_quotes}' found here")],
+                            help = "Use \" for string literals instead",
+                            "Unexpected '{}' character", invalid_quotes,
+                            )
+                            .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                        )
+                    }
+                },
+
+                // Jpl does not use semicolons to terminate statements
+                Some(b';') => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(
+                            self.cur,
+                            "Unexpected ';' found here"
+                        )],
+                        help = "Semicolons are not used to terminate statements.",
+                        "Unexpected ';' character"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
+
+                // Could be trying to use bitwise ops
+                Some(b'~') => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(
+                            self.cur,
+                            "Unexpected '~' found here"
+                        )],
+                        help = "~ bitwise operator not supported",
+                        "Unexpected '~' character"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
+
+                // Can't think of a better error message
+                unexpected_char @ (Some(b'$') | Some(b'?') | Some(b'@') | Some(b'^')
+                | Some(b'_')) => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(
+                            self.cur,
+                            format!(
+                                "Unexpected '{}' found here",
+                                *unexpected_char.unwrap() as char
+                            )
+                        )],
+                        help = "~ bitwise operator not supported",
+                        "Unexpected '{}' character",
+                        *unexpected_char.unwrap() as char
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
 
                 // These will be lexed in the following match statment as they need info about the
                 // next char
@@ -209,11 +352,31 @@ impl<'a> Iterator for Lexer<'a> {
                 (b'|', Some(b'|')) => return Some(self.create_token(TokenType::Op, 2)),
 
                 // If there arent 2 of them together they can not start a valid token
-                invalid_op @ ((b'|', _) | (b'&', _)) => {
-                    // TODO: better error, Mention that it takes 2 of them
-                    println!("Compilation failed: Unexpected character {}", invalid_op.0);
-                    exit(0);
-                }
+                (b'|', _) => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(
+                            self.cur,
+                            "Unexpected | operator found here"
+                        )],
+                        help = "Bitwise or '|' not supported. Use '||' for logical or.",
+                        "Unexpected '|' character"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
+
+                (b'&', _) => exit_with_error(
+                    miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::at_offset(
+                            self.cur,
+                            "Unexpected & operator found here"
+                        )],
+                        help = "Bitwise and '&' not supported. Use '&&' for logical and.",
+                        "Unexpected '&' character"
+                    )
+                    .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                ),
 
                 // Skip over escaped newlines
                 (b'\\', Some(b'\n')) => {
@@ -221,37 +384,53 @@ impl<'a> Iterator for Lexer<'a> {
                     continue;
                 }
                 (b'\\', _) => {
-                    println!(
-                        "Compilation failed: Invalid \\ found. This can only be used in strings, comments, and to escape newline characters"
-                    );
-                    exit(1);
+                    exit_with_error(
+                        miette!(
+                            severity = Severity::Error,
+                            labels = vec![LabeledSpan::at_offset(self.cur, "Invalid '\\' found here")],
+                            help = "The '\\' character is only valid in strings, comments, or to escape newline characters.",
+                            "Invalid '\\' character"
+                        )
+                        .with_source_code(NamedSource::new(self.source_name, self.bytes.to_vec())),
+                    )
                 }
 
                 // Single line comments and newlines
                 // These must contain a new line to lex
                 (b'/', Some(b'/')) | (b'\n', _) => {
-                    match COMMENT_WHITESPACE_REGEX.captures(&self.bytes[self.cur..]) {
-                        Some(c) => {
-                            let entire = c.get(0).unwrap();
-                            let last_nl = c
-                                .name("nl")
-                                .expect("match should contain newline due to regex pattern");
+                    let c = COMMENT_WHITESPACE_REGEX
+                        .captures(&self.bytes[self.cur..])
+                        .expect("should match due to match arm");
+                    let entire = c.get(0).unwrap();
+                    if let Some(last_nl) = c.name("nl") {
+                        let t = Token {
+                            start: self.cur + last_nl.start(),
+                            bytes: str::from_utf8(last_nl.as_bytes())
+                                .expect("lexer bytes must come from a string"),
+                            kind: TokenType::Newline,
+                        };
 
-                            let t = Token {
-                                start: self.cur + last_nl.start(),
-                                bytes: str::from_utf8(last_nl.as_bytes())
-                                    .expect("lexer bytes must come from a string"),
-                                kind: TokenType::Newline,
-                            };
-
-                            self.cur += entire.len();
-                            return Some(t);
-                        }
-                        None => {
-                            //TODO: better error messages. also should this be a lex error?
-                            println!("Compilation failed: Single line comment missing newline");
-                            exit(1);
-                        }
+                        self.cur += entire.len();
+                        return Some(t);
+                    } else {
+                        exit_with_error(
+                            miette!(
+                                severity = Severity::Error,
+                                labels = vec![
+                                    LabeledSpan::new(
+                                        Some("Comment missing newline".to_string()),
+                                        self.cur,
+                                        self.bytes.len() - self.cur
+                                    ),
+                                    LabeledSpan::at_offset(self.bytes.len() - 1, r"Add \n here"),
+                                ],
+                                "Incomplete single line comment"
+                            )
+                            .with_source_code(NamedSource::new(
+                                self.source_name,
+                                self.bytes.to_vec(),
+                            )),
+                        )
                     };
                 }
 
@@ -275,11 +454,20 @@ impl<'a> Iterator for Lexer<'a> {
                                 continue;
                             }
                         }
-                        None => {
-                            //TODO: better error messages.
-                            println!("Compilation failed: Unterminated multi-line comment");
-                            exit(1);
-                        }
+                        None => exit_with_error(
+                            miette!(
+                                severity = Severity::Error,
+                                labels = vec![
+                                    LabeledSpan::at_offset(self.cur, "Begins here"),
+                                    LabeledSpan::at_offset(self.bytes.len() - 1, r"Add */ here"),
+                                ],
+                                "Untermianted multi-line comment"
+                            )
+                            .with_source_code(NamedSource::new(
+                                self.source_name,
+                                self.bytes.to_vec(),
+                            )),
+                        ),
                     };
                 }
 
@@ -401,7 +589,7 @@ mod lexer_tests {
     #[test]
     fn ops_and_chars() {
         let source = "[,:+}";
-        let tokens: Vec<TokenType> = Lexer::new(source).map(|t| t.kind).collect();
+        let tokens: Vec<TokenType> = Lexer::new("test.jpl", source).map(|t| t.kind).collect();
         assert_eq!(
             vec![
                 TokenType::LSquare,
@@ -418,7 +606,7 @@ mod lexer_tests {
     #[test]
     fn variables() {
         let source = "[fns] hi notakeyword";
-        let tokens: Vec<_> = Lexer::new(source).collect();
+        let tokens: Vec<_> = Lexer::new("test.jpl", source).collect();
         assert_eq!(
             vec![
                 Token {
@@ -459,7 +647,7 @@ mod lexer_tests {
     #[test]
     fn variables_and_keywords() {
         let source = "fn let hi Let show";
-        let tokens: Vec<_> = Lexer::new(source).collect();
+        let tokens: Vec<_> = Lexer::new("test.jpl", source).collect();
         assert_eq!(
             vec![
                 Token {

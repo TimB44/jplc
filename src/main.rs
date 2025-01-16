@@ -12,5 +12,5 @@ fn main() {
         exit(1);
     });
 
-    compile(source, args.actions);
+    compile(args.source, source, args.actions);
 }
