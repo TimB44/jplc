@@ -475,7 +475,7 @@ impl<'a> Iterator for Lexer<'a> {
                 // a division operator
                 (b'/', _) => return Some(self.create_token(TokenType::Op, 1)),
 
-                _ => todo!(),
+                _ => unreachable!(),
             };
         }
     }
