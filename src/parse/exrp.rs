@@ -1,9 +1,4 @@
-use std::iter;
-
-use crate::{
-    lex::{Token, TokenType},
-    utils::Span,
-};
+use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
 use super::{next_matches, tokens_match, Parse, TokenStream};
@@ -89,7 +84,7 @@ impl Expr {
         })
     }
 
-    fn parse_array(ts: &mut TokenStream) -> miette::Result<Self> {
+    fn parse_array_lit(ts: &mut TokenStream) -> miette::Result<Self> {
         let [lb_token] = tokens_match(ts, [TokenType::LSquare])?;
         let mut items = Vec::new();
         while !next_matches!(ts, TokenType::RSquare) {
@@ -103,6 +98,25 @@ impl Expr {
             location: lb_token.span().join(&rb_token.span()),
             kind: ExprKind::ArrayLit(items),
         })
+    }
+
+    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+        match &self.kind {
+            ExprKind::IntLit(val) => format!("(IntExpr {})", val),
+            ExprKind::FloatLit(val) => format!("(FloatExpr {:.0})", val),
+            ExprKind::True => "(TrueExpr)".to_string(),
+            ExprKind::False => "(FalseExpr)".to_string(),
+            ExprKind::Var => format!("(VarExpr {})", self.location.as_str(src)),
+            ExprKind::ArrayLit(items) => {
+                let mut s_expr = "(ArrayLiteralExpr".to_string();
+                for item in items {
+                    s_expr.push(' ');
+                    s_expr.push_str(&item.to_s_expresion(src));
+                }
+                s_expr.push(')');
+                s_expr
+            }
+        }
     }
 }
 
@@ -123,6 +137,15 @@ pub enum ExprKind {
 
 impl Parse for Expr {
     fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
-        todo!()
+        match ts.peek().map(|t| t.kind()) {
+            Some(TokenType::IntLit) => Self::parse_int_lit(ts),
+            Some(TokenType::FloatLit) => Self::parse_float_lit(ts),
+            Some(TokenType::True) => Self::parse_true(ts),
+            Some(TokenType::False) => Self::parse_false(ts),
+            Some(TokenType::Variable) => Self::parse_var(ts),
+            Some(TokenType::LSquare) => Self::parse_array_lit(ts),
+            //TODO
+            _ => todo!(),
+        }
     }
 }

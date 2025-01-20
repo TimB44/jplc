@@ -1,3 +1,4 @@
+use core::str;
 use std::process::exit;
 
 pub fn exit_no_message() -> ! {
@@ -61,6 +62,10 @@ impl Span {
     /// Returns the end (exclusive) of the span
     pub fn end(&self) -> usize {
         self.start + self.len
+    }
+
+    pub fn as_str<'a>(&self, src: &'a [u8]) -> &'a str {
+        str::from_utf8(&src[self.start..self.end()]).expect("source code should be uf8")
     }
 }
 

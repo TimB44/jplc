@@ -5,24 +5,38 @@ use cmd::Cmd;
 use crate::lex::{Lexer, Token, TokenType};
 use miette::{miette, LabeledSpan, Severity};
 
-mod auxiliary;
-mod cmd;
-mod exrp;
-mod types;
+pub mod auxiliary;
+pub mod cmd;
+pub mod exrp;
+pub mod types;
 
-struct Program(Vec<Cmd>);
+pub struct Program {
+    commands: Vec<Cmd>,
+}
 
-// TODO: maybe use a trait. IDK if it would be usefull later
 impl Program {
-    fn parse(lexer: Lexer) -> Program {
-        let mut token_stream = TokenStream::new(lexer);
-        Cmd::parse(&mut token_stream);
+    pub fn new(lexer: Lexer) -> miette::Result<Self> {
+        Self::parse(&mut TokenStream::new(lexer))
+    }
 
-        todo!()
+    pub fn commands(&self) -> &[Cmd] {
+        &self.commands
     }
 }
 
-pub trait Parse: Sized {
+impl Parse for Program {
+    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
+        let mut commands = Vec::new();
+        while !next_matches!(ts, TokenType::Eof) {
+            let cmd = Cmd::parse(ts)?;
+            commands.push(cmd);
+            _ = tokens_match(ts, [TokenType::Newline]);
+        }
+        Ok(Self { commands })
+    }
+}
+
+trait Parse: Sized {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self>;
 }
 

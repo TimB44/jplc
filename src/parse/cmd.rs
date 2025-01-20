@@ -104,9 +104,39 @@ impl Cmd {
         })
     }
 
-    //fn to_s_expresion(&self, src: &[u8]) -> String {
-    //    match self.kind {}
-    //}
+    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+        match &self.kind {
+            CmdKind::ReadImage(str, lvalue) => {
+                format!(
+                    "(ReadCmd {} {})",
+                    str.location().as_str(src),
+                    lvalue.to_s_expresion(src)
+                )
+            }
+            CmdKind::WriteImage(expr, str) => {
+                format!(
+                    "(WriteCmd {} {})",
+                    expr.to_s_expresion(src),
+                    str.location().as_str(src)
+                )
+            }
+            CmdKind::Let(lvalue, expr) => format!(
+                "(LetCmd {} {})",
+                lvalue.to_s_expresion(src),
+                expr.to_s_expresion(src)
+            ),
+            CmdKind::Assert(expr, str) => {
+                format!(
+                    "(AssertCmd {} {})",
+                    expr.to_s_expresion(src),
+                    str.location().as_str(src)
+                )
+            }
+            CmdKind::Print(str) => format!("(PrintCmd {})", str.location().as_str(src)),
+            CmdKind::Show(expr) => format!("(ShowCmd {})", expr.to_s_expresion(src)),
+            CmdKind::Time(cmd) => format!("(TimeCmd {})", cmd.to_s_expresion(src)),
+        }
+    }
 }
 
 /// Currently parses the following grammer

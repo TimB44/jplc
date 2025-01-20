@@ -24,13 +24,21 @@ impl Parse for Str {
     }
 }
 
-pub struct Argument {
-    location: Span,
-}
+//TODO: may need later removed from this assignment
+//pub struct Argument {
+//    location: Span,
+//}
 
 pub struct LValue {
     location: Span,
 }
+
+impl LValue {
+    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+        format!("(VarLValue {})", self.location.as_str(src))
+    }
+}
+
 impl Parse for LValue {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var_token] = tokens_match(ts, [TokenType::Variable])?;
