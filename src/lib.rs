@@ -2,8 +2,10 @@ use cli::Mode;
 use lex::Lexer;
 
 pub mod cli;
-mod lex;
 pub mod utils;
+
+mod lex;
+mod parse;
 
 //TODO: Unsure about what to return
 pub fn compile(source_name: String, source: String, mode: Mode) {

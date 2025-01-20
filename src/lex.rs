@@ -1,9 +1,12 @@
-use core::{fmt::Display, str};
+use core::{
+    fmt::{self, Display},
+    str,
+};
 use miette::{miette, LabeledSpan, NamedSource, Severity};
 use regex::bytes::Regex;
-use std::sync::LazyLock;
+use std::{fmt::Formatter, sync::LazyLock};
 
-use crate::utils::exit_with_error;
+use crate::utils::{exit_with_error, Span};
 
 // Matches variable tokens. This could also match keywords
 static VARIABLE_REGEX: LazyLock<Regex> =
@@ -89,6 +92,10 @@ impl<'a> Lexer<'a> {
 
         self.cur += len;
         token
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.bytes
     }
 }
 
@@ -488,6 +495,25 @@ pub struct Token<'a> {
     kind: TokenType,
 }
 
+impl<'a> Token<'a> {
+    pub fn kind(&self) -> TokenType {
+        self.kind
+    }
+
+    //TODO EOF span will panic
+    pub fn span(&self) -> Span {
+        Span::new(self.start, self.bytes.len())
+    }
+
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn bytes(&self) -> &str {
+        self.bytes
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     Array,
@@ -530,6 +556,54 @@ pub enum TokenType {
     Variable,
     Void,
     Write,
+}
+
+impl Display for TokenType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let description = match self {
+            TokenType::Array => "array keyword",
+            TokenType::Assert => "assert keyword",
+            TokenType::Bool => "bool keyword",
+            TokenType::Colon => "colon ':'",
+            TokenType::Comma => "comma ','",
+            TokenType::Dot => "dot '.'",
+            TokenType::Else => "else keyword",
+            TokenType::Eof => "end of file",
+            TokenType::Equals => "equals '='",
+            TokenType::False => "false keyword",
+            TokenType::Float => "float keyword",
+            TokenType::FloatLit => "floating-point literal",
+            TokenType::Fn => "function keyword",
+            TokenType::If => "if keyword",
+            TokenType::Image => "image keyword",
+            TokenType::Int => "int keyword",
+            TokenType::IntLit => "integer literal",
+            TokenType::LCurly => "left curly brace '{'",
+            TokenType::Let => "let keyword",
+            TokenType::LParen => "left parenthesis '('",
+            TokenType::LSquare => "left square bracket '['",
+            TokenType::Newline => "newline",
+            TokenType::Op => "operator",
+            TokenType::Print => "print keyword",
+            TokenType::RCurly => "right curly brace '}'",
+            TokenType::Read => "read keyword",
+            TokenType::Return => "return keyword",
+            TokenType::RParen => "right parenthesis ')'",
+            TokenType::RSquare => "right square bracket ']'",
+            TokenType::Show => "show keyword",
+            TokenType::StringLit => "string literal",
+            TokenType::Struct => "struct keyword",
+            TokenType::Sum => "sum keyword",
+            TokenType::Then => "then keyword",
+            TokenType::Time => "time keyword",
+            TokenType::To => "to keyword",
+            TokenType::True => "true keyword",
+            TokenType::Variable => "variable identifier",
+            TokenType::Void => "void keyword",
+            TokenType::Write => "write keyword",
+        };
+        write!(f, "{}", description)
+    }
 }
 
 impl Display for Token<'_> {
