@@ -27,10 +27,16 @@ impl Program {
 impl Parse for Program {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let mut commands = Vec::new();
+
+        // Remove a potential leading newline
+        if matches!(ts.peek().map(|t| t.kind()), Some(TokenType::Newline)) {
+            _ = ts.next()
+        }
+
         while !next_matches!(ts, TokenType::Eof) {
             let cmd = Cmd::parse(ts)?;
             commands.push(cmd);
-            _ = tokens_match(ts, [TokenType::Newline]);
+            tokens_match(ts, [TokenType::Newline])?;
         }
         Ok(Self { commands })
     }
@@ -52,7 +58,7 @@ impl<'a> Iterator for TokenStream<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.peeked.pop_front().or(self.lexer.next())
+        self.peeked.pop_front().or_else(|| self.lexer.next())
     }
 }
 
@@ -129,5 +135,5 @@ fn tokens_match<'a, const N: usize>(
         }
     }
 
-    todo!()
+    Ok(out.map(Option::unwrap))
 }

@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use cli::Mode;
 use lex::Lexer;
 use miette::NamedSource;
@@ -23,7 +25,8 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         for token in token_stream {
             println!("{}", token)
         }
-        println!("Compilation succeeded: lexical analysis complete")
+        println!("Compilation succeeded: lexical analysis complete");
+        exit(0);
     }
 
     let program = match Program::new(token_stream) {
@@ -35,5 +38,8 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         for cmd in program.commands() {
             println!("{}", cmd.to_s_expresion(source.as_bytes()))
         }
+
+        println!("Compilation succeeded: parsing complete");
+        exit(0);
     }
 }

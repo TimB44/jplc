@@ -87,9 +87,14 @@ impl Expr {
     fn parse_array_lit(ts: &mut TokenStream) -> miette::Result<Self> {
         let [lb_token] = tokens_match(ts, [TokenType::LSquare])?;
         let mut items = Vec::new();
-        while !next_matches!(ts, TokenType::RSquare) {
-            items.push(Expr::parse(ts)?);
-            _ = tokens_match(ts, [TokenType::Comma])?;
+        if !next_matches!(ts, TokenType::RSquare) {
+            loop {
+                items.push(Expr::parse(ts)?);
+                if next_matches!(ts, TokenType::RSquare) {
+                    break;
+                }
+                _ = tokens_match(ts, [TokenType::Comma])?;
+            }
         }
 
         let items = items.into_boxed_slice();
@@ -103,7 +108,7 @@ impl Expr {
     pub fn to_s_expresion(&self, src: &[u8]) -> String {
         match &self.kind {
             ExprKind::IntLit(val) => format!("(IntExpr {})", val),
-            ExprKind::FloatLit(val) => format!("(FloatExpr {:.0})", val),
+            ExprKind::FloatLit(val) => format!("(FloatExpr {:.0})", val.trunc()),
             ExprKind::True => "(TrueExpr)".to_string(),
             ExprKind::False => "(FalseExpr)".to_string(),
             ExprKind::Var => format!("(VarExpr {})", self.location.as_str(src)),
@@ -144,8 +149,23 @@ impl Parse for Expr {
             Some(TokenType::False) => Self::parse_false(ts),
             Some(TokenType::Variable) => Self::parse_var(ts),
             Some(TokenType::LSquare) => Self::parse_array_lit(ts),
-            //TODO
-            _ => todo!(),
+            Some(t) => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("expected expresion, found: {}", t)),
+                    ts.peek().unwrap().span().start(),
+                    ts.peek().unwrap().bytes().len(),
+                )],
+                "Unexpected token found"
+            )),
+            None => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::at_offset(
+                    ts.lexer().bytes().len() - 1,
+                    "expected expression"
+                )],
+                "Missing expected token"
+            )),
         }
     }
 }

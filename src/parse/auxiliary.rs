@@ -29,6 +29,7 @@ impl Parse for Str {
 //    location: Span,
 //}
 
+#[derive(Debug)]
 pub struct LValue {
     location: Span,
 }

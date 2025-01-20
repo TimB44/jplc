@@ -1,4 +1,4 @@
-use miette::Result;
+use miette::{miette, LabeledSpan, Result, Severity};
 
 use crate::{lex::TokenType, utils::Span};
 
@@ -64,6 +64,8 @@ impl Cmd {
     fn parse_assert(ts: &mut TokenStream) -> Result<Self> {
         let [assert_token] = tokens_match(ts, [TokenType::Assert])?;
         let expr = Expr::parse(ts)?;
+
+        _ = tokens_match(ts, [TokenType::Comma])?;
         let str = Str::parse(ts)?;
         let location = assert_token.span().join(&str.location());
 
@@ -160,7 +162,23 @@ impl Parse for Cmd {
             Some(TokenType::Show) => Self::parse_show(ts),
             Some(TokenType::Time) => Self::parse_time(ts),
 
-            _ => todo!("What do i return None or error"),
+            Some(t) => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("expected command, found: {}", t)),
+                    ts.peek().unwrap().span().start(),
+                    ts.peek().unwrap().bytes().len(),
+                )],
+                "Unexpected token found"
+            )),
+            None => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::at_offset(
+                    ts.lexer().bytes().len() - 1,
+                    "expected command"
+                )],
+                "Missing expected token"
+            )),
         }
     }
 }
