@@ -6,7 +6,7 @@ compile:
 	cargo build
 
 run: 
-	cargo run -- -l $(TEST) 
+	cargo run -- -p $(TEST) 
 
 clean:
-	rm -fr *.class
+	cargo clean	

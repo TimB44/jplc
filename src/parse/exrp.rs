@@ -3,10 +3,8 @@ use miette::{miette, LabeledSpan, Severity};
 
 use super::{next_matches, tokens_match, Parse, TokenStream};
 
-//TODO: for now we allow numbers one over max for positve int literals as we do not yet know if a
-//number is positive or negative. We should either raise the min integer value or we need to do
-//some static evaluation of expresions to deterimine overflow
-const NEGATIVE_INT_LIT_MAX: u64 = 9223372036854775808;
+//TODO: allow numbers one bigger due to negative numbers
+const POSITIVE_INT_LIT_MAX: u64 = 9223372036854775807;
 
 pub struct Expr {
     location: Span,
@@ -17,7 +15,7 @@ impl Expr {
     fn parse_int_lit(ts: &mut TokenStream) -> miette::Result<Self> {
         let [int_lit_token] = tokens_match(ts, [TokenType::IntLit])?;
         let int_val: u64 = match int_lit_token.bytes().parse() {
-            Ok(i) if i <= NEGATIVE_INT_LIT_MAX => i,
+            Ok(i) if i <= POSITIVE_INT_LIT_MAX => i,
             _ => {
                 return Err(miette!(
                     severity = Severity::Error,

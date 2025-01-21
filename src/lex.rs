@@ -495,7 +495,7 @@ pub struct Token<'a> {
     kind: TokenType,
 }
 
-impl<'a> Token<'a> {
+impl Token<'_> {
     pub fn kind(&self) -> TokenType {
         self.kind
     }

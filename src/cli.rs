@@ -1,7 +1,7 @@
 use clap::Parser;
 
 #[derive(Debug, Parser)]
-#[command(name = "shifter")]
+#[command(name = "jplc")]
 #[command(about, version)]
 pub struct Args {
     // Source filename to compile

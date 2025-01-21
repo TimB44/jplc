@@ -101,7 +101,7 @@ macro_rules! next_matches {
         }
     };
 }
-pub(self) use next_matches;
+ use next_matches;
 
 fn tokens_match<'a, const N: usize>(
     ts: &mut TokenStream<'a>,
