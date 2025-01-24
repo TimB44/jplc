@@ -1,17 +1,16 @@
+//! Utility functions used throughout the compiler
 use core::str;
 use std::process::exit;
 
-pub fn exit_no_message() -> ! {
-    println!("Compilation failed");
-    exit(1);
-}
 pub fn exit_with_error(err: miette::Error) -> ! {
     println!("{:?}", err);
     println!("Compilation failed");
     exit(1);
 }
 
-/// Reprsents a non empty span
+/// Represents a span of source code.
+///
+/// Empty spans are allowed
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span {
     start: usize,
@@ -19,12 +18,8 @@ pub struct Span {
 }
 
 impl Span {
-    /// Return a new span from the given start and lenght position
-    ///
-    /// # Panics
-    /// If len == 0
+    /// Return a new span from the given start and length position
     pub fn new(start: usize, len: usize) -> Self {
-        assert!(len != 0);
         Self { start, len }
     }
 
@@ -32,9 +27,9 @@ impl Span {
     /// exclusive.
     ///
     /// # Panics
-    /// If start >= end
+    /// If start > end
     pub fn new_end(start: usize, end: usize) -> Self {
-        assert!(start < end);
+        assert!(start <= end);
         Self {
             start,
             len: end - start,
@@ -42,7 +37,6 @@ impl Span {
     }
 
     /// Creates a new Span covering both of the given spans
-    /// 1, 2  join 2, 1 => 1, 2
     pub fn join(&self, other: &Self) -> Self {
         let start = self.start.min(other.start);
         let len = ((self.start - start) + self.len).max((other.start - start) + other.len);
@@ -54,7 +48,7 @@ impl Span {
         self.start
     }
 
-    /// Return the length  of the span
+    /// Return the length of the span
     pub fn len(&self) -> usize {
         self.len
     }
@@ -64,6 +58,7 @@ impl Span {
         self.start + self.len
     }
 
+    /// Returns the string that this span references in the given source
     pub fn as_str<'a>(&self, src: &'a [u8]) -> &'a str {
         str::from_utf8(&src[self.start..self.end()]).expect("source code should be uf8")
     }
