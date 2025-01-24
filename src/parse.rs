@@ -1,3 +1,10 @@
+//! Defines types and methods for parsing a JPL program from a Lexer's token stream.
+//!
+//! Submodules:
+//! - `auxiliary`: Auxiliary types like `Strings`, `LValues`, etc.
+//! - `cmd`: Command parsing
+//! - `exrp`: Expression parsing
+//! - `types`: JPL variable types (WIP)
 use std::collections::VecDeque;
 
 use cmd::Cmd;
@@ -10,46 +17,50 @@ pub mod cmd;
 pub mod exrp;
 pub mod types;
 
+/// Represents an entire JPL program, defined as a sequence of commands.
+///
+/// This is the top-level item responsible for parsing all other components.
+#[derive(Debug, Clone)]
 pub struct Program {
     commands: Vec<Cmd>,
 }
 
 impl Program {
+    /// Creates a `Program` by parsing tokens from the lexer.
     pub fn new(lexer: Lexer) -> miette::Result<Self> {
         Self::parse(&mut TokenStream::new(lexer))
     }
 
+    /// Returns the commands in the program.
     pub fn commands(&self) -> &[Cmd] {
         &self.commands
     }
-}
 
-impl Parse for Program {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let mut commands = Vec::new();
 
         // Remove a potential leading newline
-        if matches!(ts.peek().map(|t| t.kind()), Some(TokenType::Newline)) {
-            _ = ts.next()
+        if next_matches!(ts, TokenType::Newline) {
+            expect_tokens(ts, [TokenType::Newline])?;
         }
 
         while !next_matches!(ts, TokenType::Eof) {
             let cmd = Cmd::parse(ts)?;
             commands.push(cmd);
-            tokens_match(ts, [TokenType::Newline])?;
+            expect_tokens(ts, [TokenType::Newline])?;
         }
+
+        expect_tokens(ts, [TokenType::Eof])?;
+        assert!(matches!(ts.next(), None));
+
         Ok(Self { commands })
     }
 }
 
-trait Parse: Sized {
-    fn parse(ts: &mut TokenStream) -> miette::Result<Self>;
-}
-
+/// A stream of tokens produced by a lexer, with support for peeking.
 #[derive(Debug, Clone)]
-struct TokenStream<'a> {
-    // Queue contains all of the peeked tokens. The tokens in the front come before the tokens in
-    // the back
+pub struct TokenStream<'a> {
+    // The front of the peeked queue contains the next token to be processed.
     peeked: VecDeque<Token<'a>>,
     lexer: Lexer<'a>,
 }
@@ -57,23 +68,31 @@ struct TokenStream<'a> {
 impl<'a> Iterator for TokenStream<'a> {
     type Item = Token<'a>;
 
+    /// Returns the next token from the peeked queue or the lexer.
     fn next(&mut self) -> Option<Self::Item> {
         self.peeked.pop_front().or_else(|| self.lexer.next())
     }
 }
 
 impl<'a> TokenStream<'a> {
-    fn new(lexer: Lexer<'a>) -> Self {
+    /// Creates a new `TokenStream` wrapping the given lexer.
+    pub fn new(lexer: Lexer<'a>) -> Self {
         Self {
             peeked: VecDeque::new(),
             lexer,
         }
     }
 
-    fn peek(&mut self) -> Option<&Token<'a>> {
+    /// Returns the next token that will be yielded by the iterator.
+    pub fn peek(&mut self) -> Option<&Token<'a>> {
         self.peek_at(1)
     }
 
+    /// Peeks forward a specified number of items in the iterator.
+    ///
+    /// # Panics
+    ///
+    /// If `forward` is 0.
     fn peek_at(&mut self, forward: usize) -> Option<&Token<'a>> {
         assert!(forward != 0);
 
@@ -83,11 +102,16 @@ impl<'a> TokenStream<'a> {
         self.peeked.get(forward - 1)
     }
 
+    /// Returns the lexer contained within this `TokenStream`.
     fn lexer(&self) -> Lexer<'a> {
         self.lexer
     }
 }
 
+/// Checks if the next tokens from the `TokenStream` match the given patterns, without modifying
+/// the stream.
+///
+/// Returns `true` if all tokens match, `false` otherwise.
 macro_rules! next_matches {
     ($token_stream:expr, $($token_type:pat),+ ) => {
         {
@@ -101,9 +125,13 @@ macro_rules! next_matches {
         }
     };
 }
- use next_matches;
+use next_matches;
 
-fn tokens_match<'a, const N: usize>(
+/// Consumes tokens from the `TokenStream` and checks if they match the expected token types.
+///
+/// Returns the matched tokens if all match. If any token does not match, returns an error with
+/// details about the mismatch or missing token.
+fn expect_tokens<'a, const N: usize>(
     ts: &mut TokenStream<'a>,
     expected: [TokenType; N],
 ) -> miette::Result<[Token<'a>; N]> {

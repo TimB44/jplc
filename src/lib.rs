@@ -14,7 +14,7 @@ mod parse;
 
 //TODO: Unsure about what to return
 pub fn compile(source_name: String, source: String, mode: Mode) {
-    // TODO: Remove assertion for future assignemtns
+    // TODO: Remove assertion for future assignments
     assert!(
         mode.lex | mode.parse,
         "Only lexing and (some of) parsing implemented"

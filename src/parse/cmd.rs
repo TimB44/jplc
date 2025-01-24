@@ -4,15 +4,22 @@ use crate::{lex::TokenType, utils::Span};
 
 use super::{
     auxiliary::{LValue, Str},
+    expect_tokens,
     exrp::Expr,
-    tokens_match, Parse, TokenStream,
+    TokenStream,
 };
 
+/// Represents a Command in JPL.
+///
+/// These are the top level items in a JPL source file
+#[derive(Debug, Clone)]
 pub struct Cmd {
     kind: CmdKind,
     location: Span,
 }
 
+/// Enumerates the different types of Commands
+#[derive(Debug, Clone)]
 pub enum CmdKind {
     ReadImage(Str, LValue),
     WriteImage(Expr, Str),
@@ -24,10 +31,50 @@ pub enum CmdKind {
 }
 
 impl Cmd {
+    /// Currently parses the following grammar:
+    ///
+    /// cmd : read image <string> to <lvalue>
+    ///    | write image <expr> to <string>
+    ///    | let <lvalue> = <expr>
+    ///    | assert <expr> , <string>
+    ///    | print <string>
+    ///    | show <expr>
+    ///    | time <cmd>
+    pub fn parse(ts: &mut TokenStream) -> Result<Self> {
+        let next_token = ts.peek();
+        match next_token.map(|t| t.kind()) {
+            Some(TokenType::Read) => Self::parse_read_image(ts),
+            Some(TokenType::Write) => Self::parse_write_image(ts),
+            Some(TokenType::Let) => Self::parse_let(ts),
+            Some(TokenType::Assert) => Self::parse_assert(ts),
+            Some(TokenType::Print) => Self::parse_print(ts),
+            Some(TokenType::Show) => Self::parse_show(ts),
+            Some(TokenType::Time) => Self::parse_time(ts),
+
+            Some(t) => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("expected command, found: {}", t)),
+                    ts.peek().unwrap().span().start(),
+                    ts.peek().unwrap().bytes().len(),
+                )],
+                "Unexpected token found"
+            )),
+            None => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::at_offset(
+                    ts.lexer().bytes().len() - 1,
+                    "expected command"
+                )],
+                "Missing expected token"
+            )),
+        }
+    }
+
     fn parse_read_image(ts: &mut TokenStream) -> Result<Self> {
-        let [read_token, _] = tokens_match(ts, [TokenType::Read, TokenType::Image])?;
+        let [read_token, _] = expect_tokens(ts, [TokenType::Read, TokenType::Image])?;
         let str = Str::parse(ts)?;
-        _ = tokens_match(ts, [TokenType::To])?;
+        _ = expect_tokens(ts, [TokenType::To])?;
         let lvalue = LValue::parse(ts)?;
         let location = read_token.span().join(&str.location());
         Ok(Self {
@@ -37,9 +84,9 @@ impl Cmd {
     }
 
     fn parse_write_image(ts: &mut TokenStream) -> Result<Self> {
-        let [write_token, _] = tokens_match(ts, [TokenType::Write, TokenType::Image])?;
+        let [write_token, _] = expect_tokens(ts, [TokenType::Write, TokenType::Image])?;
         let expr = Expr::parse(ts)?;
-        _ = tokens_match(ts, [TokenType::To])?;
+        _ = expect_tokens(ts, [TokenType::To])?;
         let str = Str::parse(ts)?;
         let location = write_token.span().join(&str.location());
         Ok(Self {
@@ -49,9 +96,9 @@ impl Cmd {
     }
 
     fn parse_let(ts: &mut TokenStream) -> Result<Self> {
-        let [let_token] = tokens_match(ts, [TokenType::Let])?;
+        let [let_token] = expect_tokens(ts, [TokenType::Let])?;
         let lvalue = LValue::parse(ts)?;
-        _ = tokens_match(ts, [TokenType::Equals])?;
+        _ = expect_tokens(ts, [TokenType::Equals])?;
         let expr = Expr::parse(ts)?;
 
         let location = let_token.span().join(&expr.location());
@@ -62,10 +109,10 @@ impl Cmd {
     }
 
     fn parse_assert(ts: &mut TokenStream) -> Result<Self> {
-        let [assert_token] = tokens_match(ts, [TokenType::Assert])?;
+        let [assert_token] = expect_tokens(ts, [TokenType::Assert])?;
         let expr = Expr::parse(ts)?;
 
-        _ = tokens_match(ts, [TokenType::Comma])?;
+        _ = expect_tokens(ts, [TokenType::Comma])?;
         let str = Str::parse(ts)?;
         let location = assert_token.span().join(&str.location());
 
@@ -76,7 +123,7 @@ impl Cmd {
     }
 
     fn parse_print(ts: &mut TokenStream) -> Result<Self> {
-        let [print_token] = tokens_match(ts, [TokenType::Print])?;
+        let [print_token] = expect_tokens(ts, [TokenType::Print])?;
         debug_assert!(matches!(print_token.kind(), TokenType::Print));
         let str = Str::parse(ts)?;
         let location = print_token.span().join(&str.location());
@@ -87,7 +134,7 @@ impl Cmd {
     }
 
     fn parse_show(ts: &mut TokenStream) -> Result<Self> {
-        let [show_token] = tokens_match(ts, [TokenType::Show])?;
+        let [show_token] = expect_tokens(ts, [TokenType::Show])?;
         let expr = Expr::parse(ts)?;
         let location = expr.location().join(&show_token.span());
         Ok(Self {
@@ -97,7 +144,7 @@ impl Cmd {
     }
 
     fn parse_time(ts: &mut TokenStream) -> Result<Self> {
-        let [time_token] = tokens_match(ts, [TokenType::Time])?;
+        let [time_token] = expect_tokens(ts, [TokenType::Time])?;
         let cmd = Self::parse(ts)?;
         let location = cmd.location.join(&time_token.span());
         Ok(Self {
@@ -137,48 +184,6 @@ impl Cmd {
             CmdKind::Print(str) => format!("(PrintCmd {})", str.location().as_str(src)),
             CmdKind::Show(expr) => format!("(ShowCmd {})", expr.to_s_expresion(src)),
             CmdKind::Time(cmd) => format!("(TimeCmd {})", cmd.to_s_expresion(src)),
-        }
-    }
-}
-
-/// Currently parses the following grammer
-///
-/// cmd  : read image <string> to <lvalue>
-///      | write image <expr> to <string>
-///      | let <lvalue> = <expr>
-///      | assert <expr> , <string>
-///      | print <string>
-///      | show <expr>
-///      | time <cmd>
-impl Parse for Cmd {
-    fn parse(ts: &mut TokenStream) -> Result<Self> {
-        let next_token = ts.peek();
-        match next_token.map(|t| t.kind()) {
-            Some(TokenType::Read) => Self::parse_read_image(ts),
-            Some(TokenType::Write) => Self::parse_write_image(ts),
-            Some(TokenType::Let) => Self::parse_let(ts),
-            Some(TokenType::Assert) => Self::parse_assert(ts),
-            Some(TokenType::Print) => Self::parse_print(ts),
-            Some(TokenType::Show) => Self::parse_show(ts),
-            Some(TokenType::Time) => Self::parse_time(ts),
-
-            Some(t) => Err(miette!(
-                severity = Severity::Error,
-                labels = vec![LabeledSpan::new(
-                    Some(format!("expected command, found: {}", t)),
-                    ts.peek().unwrap().span().start(),
-                    ts.peek().unwrap().bytes().len(),
-                )],
-                "Unexpected token found"
-            )),
-            None => Err(miette!(
-                severity = Severity::Error,
-                labels = vec![LabeledSpan::at_offset(
-                    ts.lexer().bytes().len() - 1,
-                    "expected command"
-                )],
-                "Missing expected token"
-            )),
         }
     }
 }

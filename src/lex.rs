@@ -1,3 +1,8 @@
+//! Lex the source code and emit an iterator of tokens
+//!
+//! The lexer will show an error message and exit if a lex error is encountered
+
+use crate::utils::{exit_with_error, Span};
 use core::{
     fmt::{self, Display},
     str,
@@ -6,16 +11,17 @@ use miette::{miette, LabeledSpan, NamedSource, Severity};
 use regex::bytes::Regex;
 use std::{fmt::Formatter, sync::LazyLock};
 
-use crate::utils::{exit_with_error, Span};
-
 // Matches variable tokens. This could also match keywords
 static VARIABLE_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("^[a-zA-Z][a-zA-Z0-9_]*").expect("regex invalid"));
 
-//
+// Matches string literals. These are surrounded by double quotes,
+// and cannot span multiple lines
 static STRING_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"^"[ !#-~]*""#).expect("regex invalid"));
 
+// Matches a float literal. This must contain a decimal point, however the number for one of the
+// sides is optional
 static FLOAT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:(?:[0-9]+\.[0-9]*)|(?:[0-9]*\.[0-9]+))").expect("regex invalid")
 });
@@ -24,7 +30,7 @@ static INT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new("^[0-9]+").expec
 
 // This regex should match all valid white space and comments matching until it finds another
 // token. If the comment is invalid ( multi-line comment with no */) then it will not match.
-// It will also capture the last unescaped newline in the nl group.
+// It will also capture the last non-escaped newline in the `nl` group.
 // This is used to determine if the text contained a newline and to find its location in the source
 // for the token
 static COMMENT_WHITESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -32,6 +38,7 @@ static COMMENT_WHITESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         .expect("regex invalid")
 });
 
+/// Maps bytes to keyword tokens, or None if bytes does not represent a keyword
 fn bytes_to_keyword(bytes: &[u8]) -> Option<TokenType> {
     match bytes {
         b"array" => Some(TokenType::Array),
@@ -63,7 +70,7 @@ fn bytes_to_keyword(bytes: &[u8]) -> Option<TokenType> {
 }
 
 /// Converts JPL source code into tokens.
-/// This struct implements the interator trait which outputs Tokens
+/// This struct implements the iterator trait which outputs Tokens
 /// If a lex occurs then an error message will be printed and the process will exit
 #[derive(Debug, Clone, Copy)]
 pub struct Lexer<'a> {
@@ -73,6 +80,9 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    /// Creates a new lexer given the source file and the source name.
+    ///
+    /// The source name is used for better error messages
     pub fn new(source_name: &'a str, source: &'a str) -> Self {
         Lexer {
             source_name,
@@ -102,12 +112,13 @@ impl<'a> Lexer<'a> {
 impl<'a> Iterator for Lexer<'a> {
     type Item = Token<'a>;
 
+    // Tokenizes the byte stream and returns the next token or exits if an error is encountered.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.bytes.get(self.cur) {
                 None => {
-                    // If this is the first time we are beyond the bytes then reutrn EOF, otherwise
-                    // return None
+                    // If this is the first time we are beyond the bytes then return end of file,
+                    // otherwise return None
                     return if self.cur == self.bytes.len() {
                         self.cur += 1;
                         Some(Token {
@@ -488,6 +499,7 @@ impl<'a> Iterator for Lexer<'a> {
     }
 }
 
+/// A token in a JPL program
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Token<'a> {
     start: usize,
@@ -514,6 +526,7 @@ impl Token<'_> {
     }
 }
 
+/// Enumerates the different possible types of tokens
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     Array,
@@ -558,6 +571,7 @@ pub enum TokenType {
     Write,
 }
 
+// Displays the type of token in a human readable form for error messages
 impl Display for TokenType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let description = match self {
@@ -606,8 +620,10 @@ impl Display for TokenType {
     }
 }
 
+/// Writes the token in the format required by the auto-grader
 impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        //TODO: use the avoid so many write macros by returning string from match
         match self.kind {
             TokenType::Array => write!(f, "ARRAY 'array'"),
             TokenType::Assert => write!(f, "ASSERT 'assert'"),
@@ -655,10 +671,8 @@ impl Display for Token<'_> {
 
 #[cfg(test)]
 mod lexer_tests {
-
-    use crate::lex::{Token, TokenType};
-
     use super::Lexer;
+    use crate::lex::{Token, TokenType};
 
     #[test]
     fn ops_and_chars() {

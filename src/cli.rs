@@ -1,3 +1,5 @@
+//! Command line interface to the JPL compiler
+
 use clap::Parser;
 
 #[derive(Debug, Parser)]
