@@ -512,7 +512,6 @@ impl Token<'_> {
         self.kind
     }
 
-    //TODO EOF span will panic
     pub fn span(&self) -> Span {
         Span::new(self.start, self.bytes.len())
     }
