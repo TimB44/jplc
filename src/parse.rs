@@ -40,11 +40,11 @@ impl Program {
         let mut commands = Vec::new();
 
         // Remove a potential leading newline
-        if next_matches!(ts, TokenType::Newline) {
+        if next_match!(ts, TokenType::Newline) {
             expect_tokens(ts, [TokenType::Newline])?;
         }
 
-        while !next_matches!(ts, TokenType::Eof) {
+        while !next_match!(ts, TokenType::Eof) {
             let cmd = Cmd::parse(ts)?;
             commands.push(cmd);
             expect_tokens(ts, [TokenType::Newline])?;
@@ -112,7 +112,7 @@ impl<'a> TokenStream<'a> {
 /// the stream.
 ///
 /// Returns `true` if all tokens match, `false` otherwise.
-macro_rules! next_matches {
+macro_rules! next_match {
     ($token_stream:expr, $($token_type:pat),+ ) => {
         {
             let mut ahead = 0;
@@ -125,7 +125,7 @@ macro_rules! next_matches {
         }
     };
 }
-use next_matches;
+use next_match;
 
 /// Consumes tokens from the `TokenStream` and checks if they match the expected token types.
 ///

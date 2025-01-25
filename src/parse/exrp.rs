@@ -2,7 +2,7 @@
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
-use super::{expect_tokens, next_matches, TokenStream};
+use super::{expect_tokens, next_match, TokenStream};
 
 //TODO: allow numbers one bigger due to negative numbers
 const POSITIVE_INT_LIT_MAX: u64 = 9223372036854775807;
@@ -131,10 +131,10 @@ impl Expr {
     fn parse_array_lit(ts: &mut TokenStream) -> miette::Result<Self> {
         let [lb_token] = expect_tokens(ts, [TokenType::LSquare])?;
         let mut items = Vec::new();
-        if !next_matches!(ts, TokenType::RSquare) {
+        if !next_match!(ts, TokenType::RSquare) {
             loop {
                 items.push(Expr::parse(ts)?);
-                if next_matches!(ts, TokenType::RSquare) {
+                if next_match!(ts, TokenType::RSquare) {
                     break;
                 }
                 _ = expect_tokens(ts, [TokenType::Comma])?;
