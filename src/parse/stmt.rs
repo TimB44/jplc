@@ -10,9 +10,9 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-//TODO: implement this
 pub struct Stmt {
-    location: Span,
+    // TODO rename once used
+    _location: Span,
     kind: StmtType,
 }
 
@@ -63,7 +63,7 @@ impl Stmt {
         let location = expr.location().join(&let_token.span());
 
         Ok(Self {
-            location,
+            _location: location,
             kind: StmtType::Let(l_value, expr),
         })
     }
@@ -75,7 +75,7 @@ impl Stmt {
         let location = str_lit.location().join(&assert_token.span());
 
         Ok(Self {
-            location,
+            _location: location,
             kind: StmtType::Assert(expr, str_lit),
         })
     }
@@ -85,7 +85,7 @@ impl Stmt {
         let location = expr.location().join(&return_token.span());
 
         Ok(Self {
-            location,
+            _location: location,
             kind: StmtType::Return(expr),
         })
     }

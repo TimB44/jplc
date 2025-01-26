@@ -81,7 +81,7 @@ impl Parse for LValue {
 /// binding : <lvalue> : <type>
 #[derive(Debug, Clone)]
 pub struct Binding {
-    location: Span,
+    _location: Span,
     l_value: LValue,
     variable_type: Type,
 }
@@ -94,7 +94,7 @@ impl Parse for Binding {
         let location = l_value.location.join(&variable_type.location());
 
         Ok(Self {
-            location,
+            _location: location,
             l_value,
             variable_type,
         })
