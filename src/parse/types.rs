@@ -3,7 +3,7 @@
 
 //TODO: implement later removed from hw3
 
-use super::next_match;
+use super::{next_match, Parse};
 use crate::{lex::TokenType, parse::expect_tokens, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
@@ -18,11 +18,13 @@ use miette::{miette, LabeledSpan, Severity};
 ///
 /// cont : [ , ... ] cont
 ///      | <empty>
+#[derive(Debug, Clone)]
 pub struct Type {
     kind: TypeKind,
     location: Span,
 }
 
+#[derive(Debug, Clone)]
 pub enum TypeKind {
     Int,
     Bool,
@@ -34,8 +36,8 @@ pub enum TypeKind {
     Void,
 }
 
-impl Type {
-    pub fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
+impl Parse for Type {
+    fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
         let mut current_type = match ts.peek().map(|t| t.kind()) {
             Some(TokenType::Int) => Self::parse_int(ts)?,
             Some(TokenType::Bool) => Self::parse_bool(ts)?,
@@ -84,7 +86,8 @@ impl Type {
 
         Ok(current_type)
     }
-
+}
+impl Type {
     fn parse_int(ts: &mut super::TokenStream) -> miette::Result<Self> {
         let [int_token] = expect_tokens(ts, [TokenType::Int])?;
         Ok(Self {

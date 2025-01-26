@@ -3,7 +3,7 @@ TEST=test.jpl
 all: run
 
 compile: 
-	cargo build
+	cargo build 
 
 run: 
 	cargo run -q -- -p $(TEST) 

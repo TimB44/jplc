@@ -15,16 +15,84 @@ use miette::{miette, LabeledSpan, Severity};
 pub mod auxiliary;
 pub mod cmd;
 pub mod exrp;
+pub mod stmt;
 pub mod types;
+
+/// Something that can be parsed from a token stream
+trait Parse: Sized {
+    fn parse(ts: &mut TokenStream) -> miette::Result<Self>;
+}
+
+/// Parses P delimiter ... P and returns a boxed slice of P
+/// Does not consume the terminating token or delimiter
+fn parse_sequence<P: Parse>(
+    ts: &mut TokenStream,
+    delimiter: TokenType,
+    terminator: TokenType,
+) -> miette::Result<Box<[P]>> {
+    let mut items = Vec::new();
+
+    // Check for empty sequences
+    if ts.peek().map(|t| t.kind()) == Some(terminator) {
+        return Ok(items.into_boxed_slice());
+    }
+
+    loop {
+        items.push(P::parse(ts)?);
+        if ts.peek().map(|t| t.kind()) != Some(delimiter) {
+            break;
+        }
+        _ = expect_tokens(ts, [delimiter])
+    }
+
+    Ok(items.into_boxed_slice())
+}
+
+/// Parses P delimiter ... and returns a boxed slice of P
+/// Does not consume the terminating token
+fn parse_sequence_trailing<P: Parse>(
+    ts: &mut TokenStream,
+    delimiter: TokenType,
+    terminator: TokenType,
+) -> miette::Result<Box<[P]>> {
+    let mut items = Vec::new();
+
+    // Check for empty sequences
+    if ts.peek().map(|t| t.kind()) == Some(terminator) {
+        return Ok(items.into_boxed_slice());
+    }
+
+    while ts.peek().map(|t| t.kind()) != Some(terminator) {
+        items.push(P::parse(ts)?);
+        _ = expect_tokens(ts, [delimiter])?;
+    }
+
+    Ok(items.into_boxed_slice())
+}
 
 /// Represents an entire JPL program, defined as a sequence of commands.
 ///
 /// This is the top-level item responsible for parsing all other components.
 #[derive(Debug, Clone)]
 pub struct Program {
-    commands: Vec<Cmd>,
+    commands: Box<[Cmd]>,
 }
 
+impl Parse for Program {
+    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
+        // Remove a potential leading newline
+        if next_match!(ts, TokenType::Newline) {
+            _ = expect_tokens(ts, [TokenType::Newline])?;
+        }
+
+        let commands = parse_sequence_trailing(ts, TokenType::Newline, TokenType::Eof)?;
+
+        expect_tokens(ts, [TokenType::Eof])?;
+        assert!(matches!(ts.next(), None));
+
+        Ok(Self { commands })
+    }
+}
 impl Program {
     /// Creates a `Program` by parsing tokens from the lexer.
     pub fn new(lexer: Lexer) -> miette::Result<Self> {
@@ -34,26 +102,6 @@ impl Program {
     /// Returns the commands in the program.
     pub fn commands(&self) -> &[Cmd] {
         &self.commands
-    }
-
-    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
-        let mut commands = Vec::new();
-
-        // Remove a potential leading newline
-        if next_match!(ts, TokenType::Newline) {
-            expect_tokens(ts, [TokenType::Newline])?;
-        }
-
-        while !next_match!(ts, TokenType::Eof) {
-            let cmd = Cmd::parse(ts)?;
-            commands.push(cmd);
-            expect_tokens(ts, [TokenType::Newline])?;
-        }
-
-        expect_tokens(ts, [TokenType::Eof])?;
-        assert!(matches!(ts.next(), None));
-
-        Ok(Self { commands })
     }
 }
 

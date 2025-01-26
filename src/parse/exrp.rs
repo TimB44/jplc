@@ -1,8 +1,7 @@
 //! Defines the types of functions to parse all kinds of expressions in JPL
+use super::{expect_tokens, parse_sequence, Parse, TokenStream};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
-
-use super::{expect_tokens, next_match, TokenStream};
 
 //TODO: allow numbers one bigger due to negative numbers
 const POSITIVE_INT_LIT_MAX: u64 = 9223372036854775807;
@@ -24,13 +23,8 @@ pub enum ExprKind {
     Var,
     ArrayLit(Box<[Expr]>),
 }
-
-impl Expr {
-    pub fn location(&self) -> Span {
-        self.location
-    }
-
-    pub fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
+impl Parse for Expr {
+    fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
         match ts.peek().map(|t| t.kind()) {
             Some(TokenType::IntLit) => Self::parse_int_lit(ts),
             Some(TokenType::FloatLit) => Self::parse_float_lit(ts),
@@ -56,6 +50,11 @@ impl Expr {
                 "Missing expected token"
             )),
         }
+    }
+}
+impl Expr {
+    pub fn location(&self) -> Span {
+        self.location
     }
 
     fn parse_int_lit(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -129,22 +128,24 @@ impl Expr {
     }
 
     fn parse_array_lit(ts: &mut TokenStream) -> miette::Result<Self> {
-        let [lb_token] = expect_tokens(ts, [TokenType::LSquare])?;
-        let mut items = Vec::new();
-        if !next_match!(ts, TokenType::RSquare) {
-            loop {
-                items.push(Expr::parse(ts)?);
-                if next_match!(ts, TokenType::RSquare) {
-                    break;
-                }
-                _ = expect_tokens(ts, [TokenType::Comma])?;
-            }
-        }
-
-        let items = items.into_boxed_slice();
+        let [l_square_token] = expect_tokens(ts, [TokenType::LSquare])?;
+        let items = parse_sequence(ts, TokenType::Comma, TokenType::RSquare)?;
         let [rb_token] = expect_tokens(ts, [TokenType::RSquare])?;
+        //let mut items = Vec::new();
+        //
+        //if !next_match!(ts, TokenType::RSquare) {
+        //    loop {
+        //        items.push(Expr::parse(ts)?);
+        //        if next_match!(ts, TokenType::RSquare) {
+        //            break;
+        //        }
+        //        _ = expect_tokens(ts, [TokenType::Comma])?;
+        //    }
+        //}
+        //
+        //let items = items.into_boxed_slice();
         Ok(Self {
-            location: lb_token.span().join(&rb_token.span()),
+            location: l_square_token.span().join(&rb_token.span()),
             kind: ExprKind::ArrayLit(items),
         })
     }

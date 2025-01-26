@@ -7,7 +7,6 @@ fn main() {
     let args = Args::parse();
 
     let bytes = read(&args.source).unwrap_or_else(|err| {
-        dbg!(&err);
         exit_with_error(miette!(
             severity = Severity::Error,
             help = format!(

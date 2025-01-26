@@ -1,13 +1,15 @@
-use miette::{miette, LabeledSpan, Result, Severity};
-
-use crate::{lex::TokenType, utils::Span};
-
+//! Parses Commands in JPL
 use super::{
-    auxiliary::{LValue, Str},
+    auxiliary::{Binding, LValue, Str},
     expect_tokens,
     exrp::Expr,
-    TokenStream,
+    parse_sequence, parse_sequence_trailing,
+    stmt::Stmt,
+    types::Type,
+    Parse, TokenStream,
 };
+use crate::{lex::TokenType, utils::Span};
+use miette::{miette, LabeledSpan, Severity};
 
 /// Represents a Command in JPL.
 ///
@@ -28,19 +30,35 @@ pub enum CmdKind {
     Print(Str),
     Show(Expr),
     Time(Box<Cmd>),
+    Function {
+        name: Span,
+        params: Box<[Binding]>,
+        return_type: Type,
+        body: Box<[Stmt]>,
+    },
+    Struct {
+        name: Span,
+        fields: Box<[(Span, Type)]>,
+    },
 }
 
-impl Cmd {
-    /// Currently parses the following grammar:
-    ///
-    /// cmd : read image <string> to <lvalue>
-    ///    | write image <expr> to <string>
-    ///    | let <lvalue> = <expr>
-    ///    | assert <expr> , <string>
-    ///    | print <string>
-    ///    | show <expr>
-    ///    | time <cmd>
-    pub fn parse(ts: &mut TokenStream) -> Result<Self> {
+/// Currently parses the following grammar:
+///
+/// cmd : read image <string> to <lvalue>
+///    | write image <expr> to <string>
+///    | let <lvalue> = <expr>
+///    | assert <expr> , <string>
+///    | print <string>
+///    | show <expr>
+///    | time <cmd>
+///    | fn <variable> ( <binding> , ... ) : <type> { ;
+///          <stmt> ; ... ;
+///      }
+///    | struct <variable> { ;
+///          <variable>: <type> ; ... ;
+///      }
+impl Parse for Cmd {
+    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let next_token = ts.peek();
         match next_token.map(|t| t.kind()) {
             Some(TokenType::Read) => Self::parse_read_image(ts),
@@ -50,6 +68,8 @@ impl Cmd {
             Some(TokenType::Print) => Self::parse_print(ts),
             Some(TokenType::Show) => Self::parse_show(ts),
             Some(TokenType::Time) => Self::parse_time(ts),
+            Some(TokenType::Fn) => Self::parse_function(ts),
+            Some(TokenType::Struct) => Self::parse_struct(ts),
 
             Some(t) => Err(miette!(
                 severity = Severity::Error,
@@ -70,8 +90,19 @@ impl Cmd {
             )),
         }
     }
+}
 
-    fn parse_read_image(ts: &mut TokenStream) -> Result<Self> {
+impl Parse for (Span, Type) {
+    /// Parses <variable>: <type>
+    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
+        let [var_token, _] = expect_tokens(ts, [TokenType::Variable, TokenType::Colon])?;
+        let var_type = Type::parse(ts)?;
+        Ok((var_token.span(), var_type))
+    }
+}
+
+impl Cmd {
+    fn parse_read_image(ts: &mut TokenStream) -> miette::Result<Self> {
         let [read_token, _] = expect_tokens(ts, [TokenType::Read, TokenType::Image])?;
         let str = Str::parse(ts)?;
         _ = expect_tokens(ts, [TokenType::To])?;
@@ -83,7 +114,7 @@ impl Cmd {
         })
     }
 
-    fn parse_write_image(ts: &mut TokenStream) -> Result<Self> {
+    fn parse_write_image(ts: &mut TokenStream) -> miette::Result<Self> {
         let [write_token, _] = expect_tokens(ts, [TokenType::Write, TokenType::Image])?;
         let expr = Expr::parse(ts)?;
         _ = expect_tokens(ts, [TokenType::To])?;
@@ -95,7 +126,7 @@ impl Cmd {
         })
     }
 
-    fn parse_let(ts: &mut TokenStream) -> Result<Self> {
+    fn parse_let(ts: &mut TokenStream) -> miette::Result<Self> {
         let [let_token] = expect_tokens(ts, [TokenType::Let])?;
         let lvalue = LValue::parse(ts)?;
         _ = expect_tokens(ts, [TokenType::Equals])?;
@@ -108,7 +139,7 @@ impl Cmd {
         })
     }
 
-    fn parse_assert(ts: &mut TokenStream) -> Result<Self> {
+    fn parse_assert(ts: &mut TokenStream) -> miette::Result<Self> {
         let [assert_token] = expect_tokens(ts, [TokenType::Assert])?;
         let expr = Expr::parse(ts)?;
 
@@ -122,7 +153,7 @@ impl Cmd {
         })
     }
 
-    fn parse_print(ts: &mut TokenStream) -> Result<Self> {
+    fn parse_print(ts: &mut TokenStream) -> miette::Result<Self> {
         let [print_token] = expect_tokens(ts, [TokenType::Print])?;
         debug_assert!(matches!(print_token.kind(), TokenType::Print));
         let str = Str::parse(ts)?;
@@ -133,7 +164,7 @@ impl Cmd {
         })
     }
 
-    fn parse_show(ts: &mut TokenStream) -> Result<Self> {
+    fn parse_show(ts: &mut TokenStream) -> miette::Result<Self> {
         let [show_token] = expect_tokens(ts, [TokenType::Show])?;
         let expr = Expr::parse(ts)?;
         let location = expr.location().join(&show_token.span());
@@ -143,12 +174,55 @@ impl Cmd {
         })
     }
 
-    fn parse_time(ts: &mut TokenStream) -> Result<Self> {
+    fn parse_time(ts: &mut TokenStream) -> miette::Result<Self> {
         let [time_token] = expect_tokens(ts, [TokenType::Time])?;
         let cmd = Self::parse(ts)?;
         let location = cmd.location.join(&time_token.span());
         Ok(Self {
             kind: CmdKind::Time(Box::new(cmd)),
+            location,
+        })
+    }
+
+    fn parse_function(ts: &mut TokenStream<'_>) -> miette::Result<Cmd> {
+        let [fn_token] = expect_tokens(ts, [TokenType::Fn])?;
+        let [name] = expect_tokens(ts, [TokenType::Variable])?;
+        _ = expect_tokens(ts, [TokenType::LParen])?;
+        let params = parse_sequence(ts, TokenType::Comma, TokenType::RParen)?;
+        _ = expect_tokens(ts, [TokenType::RParen])?;
+        _ = expect_tokens(ts, [TokenType::Colon])?;
+        let return_type = Type::parse(ts)?;
+        _ = expect_tokens(ts, [TokenType::LCurly])?;
+        _ = expect_tokens(ts, [TokenType::Newline])?;
+        let body = parse_sequence_trailing(ts, TokenType::Newline, TokenType::RCurly)?;
+        let [r_curly_token] = expect_tokens(ts, [TokenType::RCurly])?;
+
+        let location = fn_token.span().join(&r_curly_token.span());
+        Ok(Self {
+            kind: CmdKind::Function {
+                name: name.span(),
+                params,
+                return_type,
+                body,
+            },
+            location,
+        })
+    }
+
+    fn parse_struct(ts: &mut TokenStream<'_>) -> miette::Result<Cmd> {
+        let [struct_token] = expect_tokens(ts, [TokenType::Struct])?;
+        let [name] = expect_tokens(ts, [TokenType::Variable])?;
+        _ = expect_tokens(ts, [TokenType::LCurly])?;
+        _ = expect_tokens(ts, [TokenType::Newline])?;
+        let fields = parse_sequence_trailing(ts, TokenType::Newline, TokenType::RCurly)?;
+        let [r_curly_token] = expect_tokens(ts, [TokenType::RCurly])?;
+        let location = struct_token.span().join(&r_curly_token.span());
+
+        Ok(Self {
+            kind: CmdKind::Struct {
+                name: name.span(),
+                fields,
+            },
             location,
         })
     }
@@ -184,6 +258,45 @@ impl Cmd {
             CmdKind::Print(str) => format!("(PrintCmd {})", str.location().as_str(src)),
             CmdKind::Show(expr) => format!("(ShowCmd {})", expr.to_s_expresion(src)),
             CmdKind::Time(cmd) => format!("(TimeCmd {})", cmd.to_s_expresion(src)),
+            CmdKind::Function {
+                name,
+                params,
+                return_type,
+                body,
+            } => {
+                let mut s_expr = format!("(FnCmd {} ((", name.as_str(src));
+                let mut params_iter = params.iter();
+                let last = params_iter.next_back();
+                for param in params_iter {
+                    s_expr.push_str(&param.to_s_expresion(src));
+                    s_expr.push(' ');
+                }
+                if let Some(last) = last {
+                    s_expr.push_str(&last.to_s_expresion(src));
+                }
+                s_expr.push_str(")) ");
+                s_expr.push_str(&return_type.to_s_expresion(src));
+                for stmt in body {
+                    s_expr.push(' ');
+                    s_expr.push_str(&stmt.to_s_expresion(src));
+                }
+                s_expr.push(')');
+
+                s_expr
+            }
+            //(StructCmd x f (IntType) f (IntType))
+            CmdKind::Struct { name, fields } => {
+                let mut s_expr = format!("(StructCmd {}", name.as_str(src));
+
+                for (name, field_type) in fields {
+                    s_expr.push(' ');
+                    s_expr.push_str(&name.as_str(src));
+                    s_expr.push(' ');
+                    s_expr.push_str(&field_type.to_s_expresion(src));
+                }
+                s_expr.push(')');
+                s_expr
+            }
         }
     }
 }
