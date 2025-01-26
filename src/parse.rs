@@ -33,13 +33,13 @@ fn parse_sequence<P: Parse>(
     let mut items = Vec::new();
 
     // Check for empty sequences
-    if ts.peek().map(|t| t.kind()) == Some(terminator) {
+    if ts.peek_type() == Some(terminator) {
         return Ok(items.into_boxed_slice());
     }
 
     loop {
         items.push(P::parse(ts)?);
-        if ts.peek().map(|t| t.kind()) != Some(delimiter) {
+        if ts.peek_type() != Some(delimiter) {
             break;
         }
         _ = expect_tokens(ts, [delimiter])
@@ -58,11 +58,11 @@ fn parse_sequence_trailing<P: Parse>(
     let mut items = Vec::new();
 
     // Check for empty sequences
-    if ts.peek().map(|t| t.kind()) == Some(terminator) {
+    if ts.peek_type() == Some(terminator) {
         return Ok(items.into_boxed_slice());
     }
 
-    while ts.peek().map(|t| t.kind()) != Some(terminator) {
+    while ts.peek_type() != Some(terminator) {
         items.push(P::parse(ts)?);
         _ = expect_tokens(ts, [delimiter])?;
     }
@@ -136,6 +136,11 @@ impl<'a> TokenStream<'a> {
         self.peek_at(1)
     }
 
+    /// Returns the next token type that will be yielded by the iterator.
+    pub fn peek_type(&mut self) -> Option<TokenType> {
+        self.peek().map(|t| t.kind())
+    }
+
     /// Peeks forward a specified number of items in the iterator.
     ///
     /// # Panics
@@ -148,6 +153,15 @@ impl<'a> TokenStream<'a> {
             self.peeked.push_back(self.lexer.next()?);
         }
         self.peeked.get(forward - 1)
+    }
+
+    /// Peeks forward a specified number of items in the iterator and returns the token type.
+    ///
+    /// # Panics
+    ///
+    /// If `forward` is 0.
+    fn peek_type_at(&mut self, forward: usize) -> Option<TokenType> {
+        self.peek_at(forward).map(|t| t.kind())
     }
 
     /// Returns the lexer contained within this `TokenStream`.
@@ -167,7 +181,7 @@ macro_rules! next_match {
             let mut all_match = true;
             $(
                 ahead += 1;
-                all_match = all_match &&  matches!($token_stream.peek_at(ahead).map(|t| t.kind()), Some($token_type));
+                all_match = all_match &&  matches!($token_stream.peek_type_at(ahead), Some($token_type));
             )*
             all_match
         }
