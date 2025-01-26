@@ -42,7 +42,7 @@ fn parse_sequence<P: Parse>(
         if ts.peek_type() != Some(delimiter) {
             break;
         }
-        _ = expect_tokens(ts, [delimiter])
+        _ = expect_tokens(ts, [delimiter])?;
     }
 
     Ok(items.into_boxed_slice())

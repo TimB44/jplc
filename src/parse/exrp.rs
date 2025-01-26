@@ -52,19 +52,19 @@ impl Parse for Expr {
     fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
         let mut expr = match (ts.peek_type(), ts.peek_type_at(2)) {
             (Some(TokenType::LParen), _) => {
-                _ = expect_tokens(ts, [TokenType::RParen])?;
-                //TODO: Should location include the parenthesis
-                let expr = Self::parse(ts);
                 _ = expect_tokens(ts, [TokenType::LParen])?;
-                expr
+                //TODO: Should location include the parenthesis
+                let expr = Self::parse(ts)?;
+                _ = expect_tokens(ts, [TokenType::RParen])?;
+                Ok(expr)
             }
             (Some(TokenType::IntLit), _) => Self::parse_int_lit(ts),
             (Some(TokenType::FloatLit), _) => Self::parse_float_lit(ts),
             (Some(TokenType::True), _) => Self::parse_true(ts),
             (Some(TokenType::False), _) => Self::parse_false(ts),
             (Some(TokenType::LSquare), _) => Self::parse_array_lit(ts),
-            (Some(TokenType::Variable), Some(TokenType::RCurly)) => Self::parse_struct_init(ts),
-            (Some(TokenType::Variable), Some(TokenType::RParen)) => Self::parse_fn_call(ts),
+            (Some(TokenType::Variable), Some(TokenType::LCurly)) => Self::parse_struct_init(ts),
+            (Some(TokenType::Variable), Some(TokenType::LParen)) => Self::parse_fn_call(ts),
             (Some(TokenType::Variable), _) => Self::parse_var(ts),
             (Some(t), _) => Err(miette!(
                 severity = Severity::Error,
