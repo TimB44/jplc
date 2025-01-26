@@ -29,7 +29,7 @@ impl Parse for Stmt {
     ///      | assert <expr> , <string>
     ///      | return <expr>
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
-        match ts.peek().map(|t| t.kind()) {
+        match ts.peek_type() {
             Some(TokenType::Let) => Self::parse_let(ts),
             Some(TokenType::Assert) => Self::parse_assert(ts),
             Some(TokenType::Return) => Self::parse_return(ts),

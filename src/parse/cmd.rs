@@ -59,8 +59,7 @@ pub enum CmdKind {
 ///      }
 impl Parse for Cmd {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
-        let next_token = ts.peek();
-        match next_token.map(|t| t.kind()) {
+        match ts.peek_type() {
             Some(TokenType::Read) => Self::parse_read_image(ts),
             Some(TokenType::Write) => Self::parse_write_image(ts),
             Some(TokenType::Let) => Self::parse_let(ts),

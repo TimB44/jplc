@@ -1,8 +1,6 @@
 //! This module defines the types and functions to used to represent types in
 //! JPL and in the ast
 
-//TODO: implement later removed from hw3
-
 use super::{next_match, Parse};
 use crate::{lex::TokenType, parse::expect_tokens, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
@@ -31,14 +29,14 @@ pub enum TypeKind {
     Float,
     // Type of the array and the rank
     Array(Box<Type>, u8),
-    // name of struct infered form location
+    // name of struct infered from location
     Struct,
     Void,
 }
 
 impl Parse for Type {
     fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
-        let mut current_type = match ts.peek().map(|t| t.kind()) {
+        let mut current_type = match ts.peek_type() {
             Some(TokenType::Int) => Self::parse_int(ts)?,
             Some(TokenType::Bool) => Self::parse_bool(ts)?,
             Some(TokenType::Float) => Self::parse_float(ts)?,
