@@ -2,7 +2,7 @@
 use super::{
     auxiliary::{Binding, LValue, Str},
     expect_tokens,
-    exrp::Expr,
+    expr::Expr,
     parse_sequence, parse_sequence_trailing,
     stmt::Stmt,
     types::Type,

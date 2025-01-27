@@ -14,7 +14,7 @@ use miette::{miette, LabeledSpan, Severity};
 
 pub mod auxiliary;
 pub mod cmd;
-pub mod exrp;
+pub mod expr;
 pub mod stmt;
 pub mod types;
 

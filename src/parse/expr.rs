@@ -39,6 +39,7 @@ pub enum ExprKind {
     True,
     False,
     Var,
+    Void,
     ArrayLit(Box<[Expr]>),
     StructInit(Span, Box<[Expr]>),
     FunctionCall(Span, Box<[Expr]>),
@@ -62,6 +63,7 @@ impl Parse for Expr {
             (Some(TokenType::FloatLit), _) => Self::parse_float_lit(ts),
             (Some(TokenType::True), _) => Self::parse_true(ts),
             (Some(TokenType::False), _) => Self::parse_false(ts),
+            (Some(TokenType::Void), _) => Self::parse_void(ts),
             (Some(TokenType::LSquare), _) => Self::parse_array_lit(ts),
             (Some(TokenType::Variable), Some(TokenType::LCurly)) => Self::parse_struct_init(ts),
             (Some(TokenType::Variable), Some(TokenType::LParen)) => Self::parse_fn_call(ts),
@@ -177,6 +179,13 @@ impl Expr {
             kind: ExprKind::False,
         })
     }
+    fn parse_void(ts: &mut TokenStream) -> miette::Result<Self> {
+        let [void_token] = expect_tokens(ts, [TokenType::Void])?;
+        Ok(Self {
+            location: void_token.span(),
+            kind: ExprKind::Void,
+        })
+    }
 
     fn parse_var(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var_token] = expect_tokens(ts, [TokenType::Variable])?;
@@ -226,6 +235,7 @@ impl Expr {
             ExprKind::True => "(TrueExpr)".to_string(),
             ExprKind::False => "(FalseExpr)".to_string(),
             ExprKind::Var => format!("(VarExpr {})", self.location.as_str(src)),
+            ExprKind::Void => "(VoidExpr)".to_string(),
             ExprKind::ArrayLit(items) => {
                 let mut s_expr = "(ArrayLiteralExpr".to_string();
                 for item in items {

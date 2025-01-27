@@ -5,7 +5,7 @@ use miette::{miette, LabeledSpan, Severity};
 use super::{
     auxiliary::{LValue, Str},
     expect_tokens,
-    exrp::Expr,
+    expr::Expr,
     Parse, TokenStream,
 };
 
