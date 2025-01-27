@@ -245,10 +245,8 @@ impl Expr {
                 s_expr.push(')');
                 s_expr
             }
-            ExprKind::StructInit(_span, fields) => {
-                let mut s_expr = format!("(StructLiteralExpr");
-                //TODO: Refernce compiler does not add struct name however this may be a bug,
-                //update when you get more info
+            ExprKind::StructInit(span, fields) => {
+                let mut s_expr = format!("(StructLiteralExpr {}", span.as_str(src));
 
                 for expr in fields {
                     s_expr.push(' ');
