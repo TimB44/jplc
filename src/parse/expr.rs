@@ -1,4 +1,6 @@
 //! Defines the types of functions to parse all kinds of expressions in JPL
+use std::fmt::Write;
+
 use super::{expect_tokens, parse_sequence, Parse, TokenStream};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
@@ -343,24 +345,106 @@ impl Expr {
                 s_expr.push(')');
                 s_expr
             }
-            ExprKind::If(_) => todo!(),
-            ExprKind::ArrayComp(_, expr) => todo!(),
-            ExprKind::Sum(_, expr) => todo!(),
-            ExprKind::And(_) => todo!(),
-            ExprKind::Or(_) => todo!(),
-            ExprKind::LessThen(_) => todo!(),
-            ExprKind::GreaterThen(_) => todo!(),
-            ExprKind::LessThenEq(_) => todo!(),
-            ExprKind::GreaterThenEq(_) => todo!(),
-            ExprKind::EqEq(_) => todo!(),
-            ExprKind::NotEq(_) => todo!(),
-            ExprKind::Add(_) => todo!(),
-            ExprKind::Minus(_) => todo!(),
-            ExprKind::Mulitply(_) => todo!(),
-            ExprKind::Divide(_) => todo!(),
-            ExprKind::Modulo(_) => todo!(),
-            ExprKind::Not(expr) => todo!(),
-            ExprKind::Negation(expr) => todo!(),
+            ExprKind::If(if_stmt) => format!(
+                "(IfExpr {} {} {})",
+                if_stmt.0.to_s_expresion(src),
+                if_stmt.1.to_s_expresion(src),
+                if_stmt.2.to_s_expresion(src)
+            ),
+
+            ExprKind::ArrayComp(args, expr) => {
+                let mut s_expr = "(ArrayLoopExpr ".to_string();
+                for (var, expr) in args {
+                    s_expr.push_str(&var.as_str(src));
+                    s_expr.push(' ');
+
+                    s_expr.push_str(&expr.to_s_expresion(src));
+                    s_expr.push(' ');
+                }
+                s_expr.push_str(&expr.to_s_expresion(src));
+                s_expr.push(')');
+                s_expr
+            }
+            ExprKind::Sum(args, expr) => {
+                let mut s_expr = "(SumLoopExpr ".to_string();
+                for (var, expr) in args {
+                    s_expr.push_str(&var.as_str(src));
+                    s_expr.push(' ');
+
+                    s_expr.push_str(&expr.to_s_expresion(src));
+                    s_expr.push(' ');
+                }
+                s_expr.push_str(&expr.to_s_expresion(src));
+                s_expr.push(')');
+                s_expr
+            }
+            ExprKind::And(operands) => format!(
+                "(BinopExpr {} && {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::Or(operands) => format!(
+                "(BinopExpr {} || {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::LessThen(operands) => format!(
+                "(BinopExpr {} < {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::GreaterThen(operands) => format!(
+                "(BinopExpr {} > {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::LessThenEq(operands) => format!(
+                "(BinopExpr {} <= {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::GreaterThenEq(operands) => format!(
+                "(BinopExpr {} >= {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::EqEq(operands) => format!(
+                "(BinopExpr {} == {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::NotEq(operands) => format!(
+                "(BinopExpr {} != {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::Add(operands) => format!(
+                "(BinopExpr {} + {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::Minus(operands) => format!(
+                "(BinopExpr {} - {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::Mulitply(operands) => format!(
+                "(BinopExpr {} * {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::Divide(operands) => format!(
+                "(BinopExpr {} / {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::Modulo(operands) => format!(
+                "(BinopExpr {} % {})",
+                operands.0.to_s_expresion(src),
+                operands.1.to_s_expresion(src)
+            ),
+            ExprKind::Not(expr) => format!("(UnopExpr ! {})", expr.to_s_expresion(src)),
+            ExprKind::Negation(expr) => format!("(UnopExpr - {})", expr.to_s_expresion(src)),
         }
     }
 }
