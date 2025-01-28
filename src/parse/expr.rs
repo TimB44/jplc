@@ -34,6 +34,7 @@ pub struct Expr {
 ///           | <empty>
 #[derive(Debug, Clone)]
 pub enum ExprKind {
+    // Simple expresions
     IntLit(u64),
     FloatLit(f64),
     True,
@@ -47,6 +48,36 @@ pub enum ExprKind {
     // Left recursive, handled specially
     FieldAccess(Box<Expr>, Span),
     ArrayIndex(Box<Expr>, Box<[Expr]>),
+
+    // Lowest Precedence
+    If(Box<(Expr, Expr, Expr)>),
+    ArrayComp(Box<[(Span, Expr)]>, Box<Expr>),
+    Sum(Box<[(Span, Expr)]>, Box<Expr>),
+
+    // Bool ops
+    And(Box<(Expr, Expr)>),
+    Or(Box<(Expr, Expr)>),
+
+    // Comparisons: <, >, <=, and >=, ==, !=
+    LessThen(Box<(Expr, Expr)>),
+    GreaterThen(Box<(Expr, Expr)>),
+    LessThenEq(Box<(Expr, Expr)>),
+    GreaterThenEq(Box<(Expr, Expr)>),
+    EqEq(Box<(Expr, Expr)>),
+    NotEq(Box<(Expr, Expr)>),
+
+    // Additive operations + and -	}
+    Add(Box<(Expr, Expr)>),
+    Minus(Box<(Expr, Expr)>),
+
+    // Multiplicative operations *, /, and %
+    Mulitply(Box<(Expr, Expr)>),
+    Divide(Box<(Expr, Expr)>),
+    Modulo(Box<(Expr, Expr)>),
+
+    //Unary inverse ! and negation -
+    Not(Box<Expr>),
+    Negation(Box<Expr>),
 }
 
 impl Parse for Expr {
@@ -280,6 +311,24 @@ impl Expr {
                 s_expr.push(')');
                 s_expr
             }
+            ExprKind::If(_) => todo!(),
+            ExprKind::ArrayComp(_, expr) => todo!(),
+            ExprKind::Sum(_, expr) => todo!(),
+            ExprKind::And(_) => todo!(),
+            ExprKind::Or(_) => todo!(),
+            ExprKind::LessThen(_) => todo!(),
+            ExprKind::GreaterThen(_) => todo!(),
+            ExprKind::LessThenEq(_) => todo!(),
+            ExprKind::GreaterThenEq(_) => todo!(),
+            ExprKind::EqEq(_) => todo!(),
+            ExprKind::NotEq(_) => todo!(),
+            ExprKind::Add(_) => todo!(),
+            ExprKind::Minus(_) => todo!(),
+            ExprKind::Mulitply(_) => todo!(),
+            ExprKind::Divide(_) => todo!(),
+            ExprKind::Modulo(_) => todo!(),
+            ExprKind::Not(expr) => todo!(),
+            ExprKind::Negation(expr) => todo!(),
         }
     }
 }
