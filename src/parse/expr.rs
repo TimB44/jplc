@@ -16,8 +16,39 @@ pub struct Expr {
 /// Defines the different types of expressions possible in JPL
 ///
 /// The current grammar is as follows.
+///```text
+/// expr : array [ <variable> : <expr> , ... ] <expr>
+///      | sum [ <variable> : <expr> , ... ] <expr>
+///      | if <expr> then <expr> else <expr>
+///      | <bool>
 ///
-/// expr : <simple expr><expr cont>
+/// bool : <cmp> && <bool>
+///      | <cmp> || <bool>
+///      | <cmp>
+///
+/// cmp : <add> < <cmp>
+///     | <add> > <cmp>
+///     | <add> <= <cmp>
+///     | <add> >= <cmp>
+///     | <add> == <cmp>
+///     | <add> != <cmp>
+///     | <add>
+///
+/// add : <mult> + <add>
+///     | <mult> - <add>
+///     | <mult>
+///
+///
+/// mult : <unary> * <mult>
+///      | <unary> / <mult>
+///      | <unary> % <mult>
+///      | <unary>
+///
+/// unary : !<terminal>
+///       | -<terminal>
+///       | <terminal>
+///
+/// terminal : <simple expr><expr cont>
 ///
 /// simple expr : <integer>
 ///             | <float>
@@ -32,6 +63,7 @@ pub struct Expr {
 /// expr cont : .<variable><expr cont>
 ///           | [ <expr> , ... ]<expr cont>
 ///           | <empty>
+///```
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     // Simple expresions
