@@ -1,6 +1,4 @@
 //! Defines the types of functions to parse all kinds of expressions in JPL
-use std::fmt::Write;
-
 use super::{expect_tokens, parse_sequence, Parse, TokenStream};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
@@ -17,7 +15,8 @@ pub struct Expr {
 
 /// Defines the different types of expressions possible in JPL
 ///
-/// The current grammar is as follows.
+/// The current grammar is as follows. Each class will match as much as possible which ensures
+/// proper precedence
 ///```text
 /// expr : array [ <variable> : <expr> , ... ] <expr>
 ///      | sum [ <variable> : <expr> , ... ] <expr>
@@ -93,11 +92,11 @@ pub enum ExprKind {
     Or(Box<(Expr, Expr)>),
 
     // Comparisons: <, >, <=, and >=, ==, !=
-    LessThen(Box<(Expr, Expr)>),
-    GreaterThen(Box<(Expr, Expr)>),
-    LessThenEq(Box<(Expr, Expr)>),
-    GreaterThenEq(Box<(Expr, Expr)>),
-    EqEq(Box<(Expr, Expr)>),
+    LessThan(Box<(Expr, Expr)>),
+    GreaterThan(Box<(Expr, Expr)>),
+    LessThanEq(Box<(Expr, Expr)>),
+    GreaterThanEq(Box<(Expr, Expr)>),
+    Eq(Box<(Expr, Expr)>),
     NotEq(Box<(Expr, Expr)>),
 
     // Additive operations + and -	}
@@ -114,8 +113,158 @@ pub enum ExprKind {
     Negation(Box<Expr>),
 }
 
+fn parse_binary_op<const N: usize>(
+    ts: &mut TokenStream,
+    ops: [(&str, fn(Box<(Expr, Expr)>) -> ExprKind); N],
+    mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr>,
+) -> miette::Result<Expr> {
+    let mut lhs = sub_class(ts)?;
+    loop {
+        for (op_as_str, op_var) in ops {
+            match ts.peek() {
+                Some(t) if t.kind() == TokenType::Op && t.bytes() == op_as_str => {
+                    _ = expect_tokens(ts, [TokenType::Op])?;
+                    let rhs = sub_class(ts)?;
+                    let location = lhs.location.join(&rhs.location);
+
+                    lhs = Expr {
+                        location,
+                        kind: op_var(Box::new((lhs, rhs))),
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        return Ok(lhs);
+    }
+}
+
 impl Parse for Expr {
-    fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
+    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
+        Self::parse_control(ts)
+    }
+}
+
+/// Used for sum and array looping constructs
+impl Parse for (Span, Expr) {
+    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
+        let [var, _] = expect_tokens(ts, [TokenType::Variable, TokenType::Colon])?;
+        let expr = Expr::parse(ts)?;
+        Ok((var.span(), expr))
+    }
+}
+impl Expr {
+    pub fn location(&self) -> Span {
+        self.location
+    }
+
+    fn parse_control(ts: &mut TokenStream) -> miette::Result<Self> {
+        return match ts.peek_type() {
+            Some(TokenType::If) => Self::parse_if(ts),
+            Some(TokenType::Array) => Self::parse_array_comp(ts),
+            Some(TokenType::Sum) => Self::parse_sum(ts),
+            _ => Self::parse_bool(ts),
+        };
+    }
+
+    fn parse_if(ts: &mut TokenStream) -> miette::Result<Self> {
+        let [if_token] = expect_tokens(ts, [TokenType::If])?;
+        let cond = Expr::parse(ts)?;
+        _ = expect_tokens(ts, [TokenType::Then])?;
+
+        let true_expr = Expr::parse(ts)?;
+        _ = expect_tokens(ts, [TokenType::Else])?;
+        let false_expr = Expr::parse(ts)?;
+
+        let location = if_token.span().join(&false_expr.location);
+        Ok(Self {
+            location,
+            kind: ExprKind::If(Box::new((cond, true_expr, false_expr))),
+        })
+    }
+    fn parse_array_comp(ts: &mut TokenStream) -> miette::Result<Self> {
+        let [arr_token, _] = expect_tokens(ts, [TokenType::Array, TokenType::LSquare])?;
+        let params = parse_sequence(ts, TokenType::Comma, TokenType::RSquare)?;
+        let _ = expect_tokens(ts, [TokenType::RSquare])?;
+        let expr = Self::parse(ts)?;
+        let location = arr_token.span().join(&expr.location);
+
+        Ok(Self {
+            location,
+            kind: ExprKind::ArrayComp(params, Box::new(expr)),
+        })
+    }
+    fn parse_sum(ts: &mut TokenStream) -> miette::Result<Self> {
+        let [arr_token, _] = expect_tokens(ts, [TokenType::Sum, TokenType::LSquare])?;
+        let params = parse_sequence(ts, TokenType::Comma, TokenType::RSquare)?;
+        let _ = expect_tokens(ts, [TokenType::RSquare])?;
+        let expr = Self::parse(ts)?;
+        let location = arr_token.span().join(&expr.location);
+
+        Ok(Self {
+            location,
+            kind: ExprKind::Sum(params, Box::new(expr)),
+        })
+    }
+    fn parse_bool(ts: &mut TokenStream) -> miette::Result<Self> {
+        parse_binary_op(
+            ts,
+            [("||", ExprKind::Or), ("&&", ExprKind::And)],
+            Self::parse_cmp,
+        )
+    }
+
+    fn parse_cmp(ts: &mut TokenStream) -> miette::Result<Self> {
+        parse_binary_op(
+            ts,
+            [
+                (">", ExprKind::GreaterThan),
+                ("<", ExprKind::LessThan),
+                ("<=", ExprKind::LessThanEq),
+                (">=", ExprKind::GreaterThanEq),
+                ("==", ExprKind::Eq),
+                ("!=", ExprKind::NotEq),
+            ],
+            Self::parse_add,
+        )
+    }
+
+    fn parse_add(ts: &mut TokenStream) -> miette::Result<Self> {
+        parse_binary_op(
+            ts,
+            [("+", ExprKind::Add), ("-", ExprKind::Minus)],
+            Self::parse_mult,
+        )
+    }
+    fn parse_mult(ts: &mut TokenStream) -> miette::Result<Self> {
+        parse_binary_op(
+            ts,
+            [
+                ("*", ExprKind::Mulitply),
+                ("/", ExprKind::Divide),
+                ("%", ExprKind::Modulo),
+            ],
+            Self::parse_unary,
+        )
+    }
+    fn parse_unary(ts: &mut TokenStream) -> miette::Result<Self> {
+        let expr_type = match ts.peek() {
+            Some(t) if t.kind() == TokenType::Op && t.bytes() == "!" => ExprKind::Not,
+            Some(t) if t.kind() == TokenType::Op && t.bytes() == "-" => ExprKind::Negation,
+            _ => return Self::parse_simple(ts),
+        };
+
+        let [unary_op_token] = expect_tokens(ts, [TokenType::Op])?;
+        let rhs = Self::parse_unary(ts)?;
+        let location = unary_op_token.span().join(&rhs.location);
+        Ok(Self {
+            location,
+            kind: expr_type(Box::new(rhs)),
+        })
+    }
+
+    fn parse_simple(ts: &mut TokenStream) -> miette::Result<Self> {
         let mut expr = match (ts.peek_type(), ts.peek_type_at(2)) {
             (Some(TokenType::LParen), _) => {
                 _ = expect_tokens(ts, [TokenType::LParen])?;
@@ -176,11 +325,6 @@ impl Parse for Expr {
                 _ => break expr,
             }
         })
-    }
-}
-impl Expr {
-    pub fn location(&self) -> Span {
-        self.location
     }
 
     fn parse_int_lit(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -244,6 +388,7 @@ impl Expr {
             kind: ExprKind::False,
         })
     }
+
     fn parse_void(ts: &mut TokenStream) -> miette::Result<Self> {
         let [void_token] = expect_tokens(ts, [TokenType::Void])?;
         Ok(Self {
@@ -293,6 +438,7 @@ impl Expr {
             kind: ExprKind::FunctionCall(var_token.span(), args),
         })
     }
+
     pub fn to_s_expresion(&self, src: &[u8]) -> String {
         match &self.kind {
             ExprKind::IntLit(val) => format!("(IntExpr {})", val),
@@ -351,7 +497,6 @@ impl Expr {
                 if_stmt.1.to_s_expresion(src),
                 if_stmt.2.to_s_expresion(src)
             ),
-
             ExprKind::ArrayComp(args, expr) => {
                 let mut s_expr = "(ArrayLoopExpr ".to_string();
                 for (var, expr) in args {
@@ -388,27 +533,27 @@ impl Expr {
                 operands.0.to_s_expresion(src),
                 operands.1.to_s_expresion(src)
             ),
-            ExprKind::LessThen(operands) => format!(
+            ExprKind::LessThan(operands) => format!(
                 "(BinopExpr {} < {})",
                 operands.0.to_s_expresion(src),
                 operands.1.to_s_expresion(src)
             ),
-            ExprKind::GreaterThen(operands) => format!(
+            ExprKind::GreaterThan(operands) => format!(
                 "(BinopExpr {} > {})",
                 operands.0.to_s_expresion(src),
                 operands.1.to_s_expresion(src)
             ),
-            ExprKind::LessThenEq(operands) => format!(
+            ExprKind::LessThanEq(operands) => format!(
                 "(BinopExpr {} <= {})",
                 operands.0.to_s_expresion(src),
                 operands.1.to_s_expresion(src)
             ),
-            ExprKind::GreaterThenEq(operands) => format!(
+            ExprKind::GreaterThanEq(operands) => format!(
                 "(BinopExpr {} >= {})",
                 operands.0.to_s_expresion(src),
                 operands.1.to_s_expresion(src)
             ),
-            ExprKind::EqEq(operands) => format!(
+            ExprKind::Eq(operands) => format!(
                 "(BinopExpr {} == {})",
                 operands.0.to_s_expresion(src),
                 operands.1.to_s_expresion(src)
