@@ -18,35 +18,52 @@ pub struct Expr {
 /// The current grammar is as follows. Each class will match as much as possible which ensures
 /// proper precedence
 ///```text
-/// expr : array [ <variable> : <expr> , ... ] <expr>
-///      | sum [ <variable> : <expr> , ... ] <expr>
-///      | if <expr> then <expr> else <expr>
+/// expr : <control>
 ///      | <bool>
 ///
+/// control : array [ <variable> : <expr> , ... ] <expr>
+///         | sum [ <variable> : <expr> , ... ] <expr>
+///         | if <expr> then <expr> else <expr>
+///
 /// bool : <cmp> && <bool>
+///      | <cmp> && <control>
 ///      | <cmp> || <bool>
+///      | <cmp> || <control>
 ///      | <cmp>
 ///
 /// cmp : <add> < <cmp>
+///     | <add> < <control>
 ///     | <add> > <cmp>
+///     | <add> > <control>
 ///     | <add> <= <cmp>
+///     | <add> <= <control>
 ///     | <add> >= <cmp>
+///     | <add> >= <control>
 ///     | <add> == <cmp>
+///     | <add> == <control>
 ///     | <add> != <cmp>
+///     | <add> != <control>
 ///     | <add>
 ///
 /// add : <mult> + <add>
+///     | <mult> + <control>
 ///     | <mult> - <add>
+///     | <mult> - <control>
 ///     | <mult>
 ///
 ///
 /// mult : <unary> * <mult>
+///      | <unary> * <control>
 ///      | <unary> / <mult>
+///      | <unary> / <control>
 ///      | <unary> % <mult>
+///      | <unary> % <control>
 ///      | <unary>
 ///
-/// unary : !<terminal>
-///       | -<terminal>
+/// unary : !<unary>
+///       | !<control>
+///       | -<unary>
+///       | -<control>
 ///       | <terminal>
 ///
 /// terminal : <simple expr><expr cont>
@@ -249,6 +266,7 @@ impl Expr {
             Self::parse_unary,
         )
     }
+
     fn parse_unary(ts: &mut TokenStream) -> miette::Result<Self> {
         let expr_type = match ts.peek() {
             Some(t) if t.kind() == TokenType::Op && t.bytes() == "!" => ExprKind::Not,
