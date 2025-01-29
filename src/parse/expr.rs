@@ -141,7 +141,15 @@ fn parse_binary_op<const N: usize>(
             match ts.peek() {
                 Some(t) if t.kind() == TokenType::Op && t.bytes() == op_as_str => {
                     _ = expect_tokens(ts, [TokenType::Op])?;
-                    let rhs = sub_class(ts)?;
+                    // Be able to parse a control on the rhs. While control does have a low
+                    // precedence there is no ambiguity when it is on the right
+                    // ex. 1 + sum[i: 50] i should parse
+                    let rhs = match ts.peek_type() {
+                        Some(TokenType::Array) => Expr::parse_array_comp(ts),
+                        Some(TokenType::Sum) => Expr::parse_sum(ts),
+                        Some(TokenType::If) => Expr::parse_if(ts),
+                        _ => sub_class(ts),
+                    }?;
                     let location = lhs.location.join(&rhs.location);
 
                     lhs = Expr {
@@ -172,6 +180,7 @@ impl Parse for (Span, Expr) {
         Ok((var.span(), expr))
     }
 }
+
 impl Expr {
     pub fn location(&self) -> Span {
         self.location
