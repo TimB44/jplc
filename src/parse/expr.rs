@@ -119,7 +119,7 @@ fn parse_binary_op<const N: usize>(
     mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr>,
 ) -> miette::Result<Expr> {
     let mut lhs = sub_class(ts)?;
-    loop {
+    'outer: loop {
         for (op_as_str, op_var) in ops {
             match ts.peek() {
                 Some(t) if t.kind() == TokenType::Op && t.bytes() == op_as_str => {
@@ -130,7 +130,8 @@ fn parse_binary_op<const N: usize>(
                     lhs = Expr {
                         location,
                         kind: op_var(Box::new((lhs, rhs))),
-                    }
+                    };
+                    continue 'outer;
                 }
                 _ => (),
             }
