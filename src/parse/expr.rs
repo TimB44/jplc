@@ -280,6 +280,9 @@ impl Expr {
         let expr_type = match ts.peek() {
             Some(t) if t.kind() == TokenType::Op && t.bytes() == "!" => ExprKind::Not,
             Some(t) if t.kind() == TokenType::Op && t.bytes() == "-" => ExprKind::Negation,
+            Some(t) if t.kind() == TokenType::Array => return Expr::parse_array_comp(ts),
+            Some(t) if t.kind() == TokenType::Sum => return Expr::parse_sum(ts),
+            Some(t) if t.kind() == TokenType::If => return Expr::parse_if(ts),
             _ => return Self::parse_simple(ts),
         };
 
