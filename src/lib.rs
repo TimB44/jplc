@@ -1,4 +1,4 @@
-use std::process::exit;
+use std::{process::exit, time::Instant};
 
 use cli::Mode;
 use lex::Lexer;
@@ -15,17 +15,18 @@ mod parse;
 //TODO: Unsure about what to return
 pub fn compile(source_name: String, source: String, mode: Mode) {
     // TODO: Remove assertion for future assignments
-    assert!(
-        mode.lex | mode.parse,
-        "Only lexing and (some of) parsing implemented"
-    );
+    assert!(mode.lex | mode.parse, "Only lexing and parsing implemented");
+    let start_time = Instant::now();
 
     let token_stream = Lexer::new(&source_name, &source);
     if mode.lex {
         for token in token_stream {
             println!("{}", token)
         }
-        println!("Compilation succeeded: lexical analysis complete");
+        println!(
+            "Compilation succeeded: lexical analysis complete in {}ms",
+            Instant::now().duration_since(start_time).as_millis()
+        );
         exit(0);
     }
 
@@ -39,7 +40,13 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
             println!("{}", cmd.to_s_expresion(source.as_bytes()))
         }
 
-        println!("Compilation succeeded: parsing complete");
+        println!(
+            "Compilation succeeded: parsing complete in {}ms",
+            Instant::now().duration_since(start_time).as_millis()
+        );
         exit(0);
     }
+
+    // TODO: Remove later
+    unreachable!()
 }
