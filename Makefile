@@ -3,10 +3,10 @@ TEST=test.jpl
 all: run
 
 compile: 
-	cargo build 
+	cargo build -r
 
 run: 
-	cargo run -q -- -p $(TEST) 
+	./target/release/jplc -p $(TEST) 
 
 clean:
 	cargo clean	
