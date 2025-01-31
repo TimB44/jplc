@@ -130,9 +130,11 @@ pub enum ExprKind {
     Negation(Box<Expr>),
 }
 
+type VariantBuilder = fn(Box<(Expr, Expr)>) -> ExprKind;
+
 fn parse_binary_op<const N: usize>(
     ts: &mut TokenStream,
-    ops: [(&str, fn(Box<(Expr, Expr)>) -> ExprKind); N],
+    ops: [(&str, VariantBuilder); N],
     mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr>,
 ) -> miette::Result<Expr> {
     let mut lhs = sub_class(ts)?;
@@ -187,12 +189,12 @@ impl Expr {
     }
 
     fn parse_control(ts: &mut TokenStream) -> miette::Result<Self> {
-        return match ts.peek_type() {
+        match ts.peek_type() {
             Some(TokenType::If) => Self::parse_if(ts),
             Some(TokenType::Array) => Self::parse_array_comp(ts),
             Some(TokenType::Sum) => Self::parse_sum(ts),
             _ => Self::parse_bool(ts),
-        };
+        }
     }
 
     fn parse_if(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -531,7 +533,7 @@ impl Expr {
             ExprKind::ArrayComp(args, expr) => {
                 let mut s_expr = "(ArrayLoopExpr ".to_string();
                 for (var, expr) in args {
-                    s_expr.push_str(&var.as_str(src));
+                    s_expr.push_str(var.as_str(src));
                     s_expr.push(' ');
 
                     s_expr.push_str(&expr.to_s_expresion(src));
@@ -544,7 +546,7 @@ impl Expr {
             ExprKind::Sum(args, expr) => {
                 let mut s_expr = "(SumLoopExpr ".to_string();
                 for (var, expr) in args {
-                    s_expr.push_str(&var.as_str(src));
+                    s_expr.push_str(var.as_str(src));
                     s_expr.push(' ');
 
                     s_expr.push_str(&expr.to_s_expresion(src));

@@ -129,11 +129,11 @@ impl Type {
 
     pub fn to_s_expresion(&self, src: &[u8]) -> String {
         match &self.kind {
-            TypeKind::Int => format!("(IntType)"),
-            TypeKind::Bool => format!("(BoolType)"),
-            TypeKind::Float => format!("(FloatType)"),
+            TypeKind::Int => "(IntType)".to_string(),
+            TypeKind::Bool => "(BoolType)".to_string(),
+            TypeKind::Float => "(FloatType)".to_string(),
             TypeKind::Struct => format!("(StructType {})", self.location.as_str(src)),
-            TypeKind::Void => format!("(VoidType)"),
+            TypeKind::Void => "(VoidType)".to_string(),
             TypeKind::Array(expr, rank) => {
                 format!("(ArrayType {} {})", expr.to_s_expresion(src), rank)
             }

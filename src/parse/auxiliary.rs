@@ -47,7 +47,7 @@ impl LValue {
                 let mut s_expr = format!("(ArrayLValue {}", self.variable.as_str(src));
                 for binding in array_bindings {
                     s_expr.push(' ');
-                    s_expr.push_str(&binding.as_str(src));
+                    s_expr.push_str(binding.as_str(src));
                 }
                 s_expr.push(')');
                 s_expr

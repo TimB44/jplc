@@ -289,7 +289,7 @@ impl Cmd {
 
                 for (name, field_type) in fields {
                     s_expr.push(' ');
-                    s_expr.push_str(&name.as_str(src));
+                    s_expr.push_str(name.as_str(src));
                     s_expr.push(' ');
                     s_expr.push_str(&field_type.to_s_expresion(src));
                 }

@@ -88,7 +88,7 @@ impl Parse for Program {
         let commands = parse_sequence_trailing(ts, TokenType::Newline, TokenType::Eof)?;
 
         expect_tokens(ts, [TokenType::Eof])?;
-        assert!(matches!(ts.next(), None));
+        assert!(ts.next().is_none());
 
         Ok(Self { commands })
     }
