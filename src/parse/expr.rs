@@ -91,6 +91,7 @@ pub enum ExprKind {
     False,
     Var,
     Void,
+    Paren(Box<Expr>),
     ArrayLit(Box<[Expr]>),
     StructInit(Span, Box<[Expr]>),
     FunctionCall(Span, Box<[Expr]>),
@@ -125,7 +126,7 @@ pub enum ExprKind {
     Divide(Box<(Expr, Expr)>),
     Modulo(Box<(Expr, Expr)>),
 
-    //Unary inverse ! and negation -
+    // Unary inverse ! and negation -
     Not(Box<Expr>),
     Negation(Box<Expr>),
 }
@@ -300,11 +301,14 @@ impl Expr {
     fn parse_simple(ts: &mut TokenStream) -> miette::Result<Self> {
         let mut expr = match (ts.peek_type(), ts.peek_type_at(2)) {
             (Some(TokenType::LParen), _) => {
-                _ = expect_tokens(ts, [TokenType::LParen])?;
-                //TODO: Should location include the parenthesis
+                let [l_paren] = expect_tokens(ts, [TokenType::LParen])?;
                 let expr = Self::parse(ts)?;
-                _ = expect_tokens(ts, [TokenType::RParen])?;
-                Ok(expr)
+                let [r_paren] = expect_tokens(ts, [TokenType::RParen])?;
+
+                Ok(Self {
+                    location: l_paren.span().join(&r_paren.span()),
+                    kind: ExprKind::Paren(Box::new(expr)),
+                })
             }
             (Some(TokenType::IntLit), _) => Self::parse_int_lit(ts),
             (Some(TokenType::FloatLit), _) => Self::parse_float_lit(ts),
@@ -623,6 +627,7 @@ impl Expr {
             ),
             ExprKind::Not(expr) => format!("(UnopExpr ! {})", expr.to_s_expresion(src)),
             ExprKind::Negation(expr) => format!("(UnopExpr - {})", expr.to_s_expresion(src)),
+            ExprKind::Paren(expr) => expr.to_s_expresion(src),
         }
     }
 }
