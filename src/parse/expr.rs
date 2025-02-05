@@ -133,16 +133,16 @@ pub enum ExprKind {
 
 type VariantBuilder = fn(Box<(Expr, Expr)>) -> ExprKind;
 
-fn parse_binary_op<const N: usize>(
+fn parse_binary_op(
     ts: &mut TokenStream,
-    ops: [(&str, VariantBuilder); N],
+    ops: &[(&str, VariantBuilder)],
     mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr>,
 ) -> miette::Result<Expr> {
     let mut lhs = sub_class(ts)?;
     'outer: loop {
         for (op_as_str, op_var) in ops {
             match ts.peek() {
-                Some(t) if t.kind() == TokenType::Op && t.bytes() == op_as_str => {
+                Some(t) if t.kind() == TokenType::Op && t.bytes() == *op_as_str => {
                     _ = expect_tokens(ts, [TokenType::Op])?;
                     // Be able to parse a control on the rhs. While control does have a low
                     // precedence there is no ambiguity when it is on the right
@@ -240,7 +240,7 @@ impl Expr {
     fn parse_bool(ts: &mut TokenStream) -> miette::Result<Self> {
         parse_binary_op(
             ts,
-            [("||", ExprKind::Or), ("&&", ExprKind::And)],
+            &[("||", ExprKind::Or), ("&&", ExprKind::And)],
             Self::parse_cmp,
         )
     }
@@ -248,7 +248,7 @@ impl Expr {
     fn parse_cmp(ts: &mut TokenStream) -> miette::Result<Self> {
         parse_binary_op(
             ts,
-            [
+            &[
                 (">", ExprKind::GreaterThan),
                 ("<", ExprKind::LessThan),
                 ("<=", ExprKind::LessThanEq),
@@ -263,14 +263,14 @@ impl Expr {
     fn parse_add(ts: &mut TokenStream) -> miette::Result<Self> {
         parse_binary_op(
             ts,
-            [("+", ExprKind::Add), ("-", ExprKind::Minus)],
+            &[("+", ExprKind::Add), ("-", ExprKind::Minus)],
             Self::parse_mult,
         )
     }
     fn parse_mult(ts: &mut TokenStream) -> miette::Result<Self> {
         parse_binary_op(
             ts,
-            [
+            &[
                 ("*", ExprKind::Mulitply),
                 ("/", ExprKind::Divide),
                 ("%", ExprKind::Modulo),
