@@ -17,6 +17,8 @@ pub struct Expr {
 ///
 /// The current grammar is as follows. Each class will match as much as possible which ensures
 /// proper precedence
+///
+/// Todo: Fix grammer it associativity is currently flipped (but the code is correct)
 ///```text
 /// expr : <control>
 ///      | <bool>

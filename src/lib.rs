@@ -11,11 +11,15 @@ pub mod utils;
 
 mod lex;
 mod parse;
+mod typecheck;
 
 //TODO: Unsure about what to return
 pub fn compile(source_name: String, source: String, mode: Mode) {
     // TODO: Remove assertion for future assignments
-    assert!(mode.lex | mode.parse, "Only lexing and parsing implemented");
+    assert!(
+        mode.lex | mode.parse | mode.typecheck,
+        "Only lexing, parsing and part of typechecking implemented"
+    );
     let start_time = Instant::now();
 
     let token_stream = Lexer::new(&source_name, &source);
@@ -47,6 +51,5 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         exit(0);
     }
 
-    // TODO: Remove later
     unreachable!()
 }

@@ -622,7 +622,6 @@ impl Display for TokenType {
 /// Writes the token in the format required by the auto-grader
 impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        //TODO: use the avoid so many write macros by returning string from match
         match self.kind {
             TokenType::Array => write!(f, "ARRAY 'array'"),
             TokenType::Assert => write!(f, "ASSERT 'assert'"),
