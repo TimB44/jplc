@@ -1,5 +1,5 @@
 //! Defines the types of functions to parse all kinds of expressions in JPL
-use super::{expect_tokens, parse_sequence, Parse, TokenStream};
+use super::{super::parse::parse_sequence, expect_tokens, Parse, TokenStream};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 

@@ -1,6 +1,10 @@
-use crate::{lex::TokenType, utils::Span};
+use crate::{
+    lex::TokenType,
+    parse::{expect_tokens, next_match, parse_sequence, Parse, TokenStream},
+    utils::Span,
+};
 
-use super::{expect_tokens, next_match, parse_sequence, types::Type, Parse, TokenStream};
+use super::types::Type;
 
 /// Reprsents a string literal in the source code.
 #[derive(Debug, Clone)]

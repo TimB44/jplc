@@ -1,13 +1,16 @@
 //! Parses Commands in JPL
+use super::super::parse::parse_sequence;
 use super::{
     auxiliary::{Binding, LValue, Str},
     expect_tokens,
     expr::Expr,
-    parse_sequence, parse_sequence_trailing,
+    parse_sequence_trailing,
     stmt::Stmt,
     types::Type,
     Parse, TokenStream,
 };
+
+use crate::typecheck::{Environment, Typecheck};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
@@ -88,6 +91,12 @@ impl Parse for Cmd {
                 "Missing expected token"
             )),
         }
+    }
+}
+
+impl Typecheck for Cmd {
+    fn check(&self, env: &mut Environment) -> miette::Result<()> {
+        todo!()
     }
 }
 

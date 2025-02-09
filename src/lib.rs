@@ -1,14 +1,15 @@
 use std::{process::exit, time::Instant};
 
+use ast::Program;
 use cli::Mode;
 use lex::Lexer;
 use miette::NamedSource;
-use parse::Program;
 use utils::exit_with_error;
 
 pub mod cli;
 pub mod utils;
 
+mod ast;
 mod lex;
 mod parse;
 mod typecheck;

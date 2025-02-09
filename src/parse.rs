@@ -7,25 +7,17 @@
 //! - `types`: JPL variable types (WIP)
 use std::collections::VecDeque;
 
-use cmd::Cmd;
-
 use crate::lex::{Lexer, Token, TokenType};
 use miette::{miette, LabeledSpan, Severity};
 
-pub mod auxiliary;
-pub mod cmd;
-pub mod expr;
-pub mod stmt;
-pub mod types;
-
 /// Something that can be parsed from a token stream
-trait Parse: Sized {
+pub(super) trait Parse: Sized {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self>;
 }
 
 /// Parses P delimiter ... P and returns a boxed slice of P
 /// Does not consume the terminating token or delimiter
-fn parse_sequence<P: Parse>(
+pub fn parse_sequence<P: Parse>(
     ts: &mut TokenStream,
     delimiter: TokenType,
     terminator: TokenType,
@@ -50,7 +42,7 @@ fn parse_sequence<P: Parse>(
 
 /// Parses P delimiter ... and returns a boxed slice of P
 /// Does not consume the terminating token
-fn parse_sequence_trailing<P: Parse>(
+pub fn parse_sequence_trailing<P: Parse>(
     ts: &mut TokenStream,
     delimiter: TokenType,
     terminator: TokenType,
@@ -68,41 +60,6 @@ fn parse_sequence_trailing<P: Parse>(
     }
 
     Ok(items.into_boxed_slice())
-}
-
-/// Represents an entire JPL program, defined as a sequence of commands.
-///
-/// This is the top-level item responsible for parsing all other components.
-#[derive(Debug, Clone)]
-pub struct Program {
-    commands: Box<[Cmd]>,
-}
-
-impl Parse for Program {
-    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
-        // Remove a potential leading newline
-        if next_match!(ts, TokenType::Newline) {
-            _ = expect_tokens(ts, [TokenType::Newline])?;
-        }
-
-        let commands = parse_sequence_trailing(ts, TokenType::Newline, TokenType::Eof)?;
-
-        expect_tokens(ts, [TokenType::Eof])?;
-        assert!(ts.next().is_none());
-
-        Ok(Self { commands })
-    }
-}
-impl Program {
-    /// Creates a `Program` by parsing tokens from the lexer.
-    pub fn new(lexer: Lexer) -> miette::Result<Self> {
-        Self::parse(&mut TokenStream::new(lexer))
-    }
-
-    /// Returns the commands in the program.
-    pub fn commands(&self) -> &[Cmd] {
-        &self.commands
-    }
 }
 
 /// A stream of tokens produced by a lexer, with support for peeking.
@@ -146,7 +103,7 @@ impl<'a> TokenStream<'a> {
     /// # Panics
     ///
     /// If `forward` is 0.
-    fn peek_at(&mut self, forward: usize) -> Option<&Token<'a>> {
+    pub fn peek_at(&mut self, forward: usize) -> Option<&Token<'a>> {
         assert!(forward != 0);
 
         for _ in self.peeked.len()..forward {
@@ -160,12 +117,12 @@ impl<'a> TokenStream<'a> {
     /// # Panics
     ///
     /// If `forward` is 0.
-    fn peek_type_at(&mut self, forward: usize) -> Option<TokenType> {
+    pub fn peek_type_at(&mut self, forward: usize) -> Option<TokenType> {
         self.peek_at(forward).map(|t| t.kind())
     }
 
     /// Returns the lexer contained within this `TokenStream`.
-    fn lexer(&self) -> Lexer<'a> {
+    pub fn lexer(&self) -> Lexer<'a> {
         self.lexer
     }
 }
@@ -187,13 +144,13 @@ macro_rules! next_match {
         }
     };
 }
-use next_match;
+pub(super) use next_match;
 
 /// Consumes tokens from the `TokenStream` and checks if they match the expected token types.
 ///
 /// Returns the matched tokens if all match. If any token does not match, returns an error with
 /// details about the mismatch or missing token.
-fn expect_tokens<'a, const N: usize>(
+pub fn expect_tokens<'a, const N: usize>(
     ts: &mut TokenStream<'a>,
     expected: [TokenType; N],
 ) -> miette::Result<[Token<'a>; N]> {

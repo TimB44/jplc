@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use miette::miette;
 
-use crate::{parse::Program, utils::Span};
+use crate::utils::Span;
 
 const BUILTIN_STRUCTS: [(&str, &[(&str, Type)]); 1] = [(
     "rgba",
@@ -14,7 +14,7 @@ const BUILTIN_STRUCTS: [(&str, &[(&str, Type)]); 1] = [(
     ],
 )];
 
-struct Environment<'a> {
+pub struct Environment<'a> {
     src: &'a [u8],
     structs: HashMap<&'a str, &'a [(&'a str, Type)]>,
 }
@@ -28,11 +28,11 @@ impl<'a> Environment<'a> {
     }
 }
 
-trait Typecheck {
+pub trait Typecheck {
     fn check(&self, env: &mut Environment) -> miette::Result<()>;
 }
 
-trait GetType {
+pub trait GetType {
     fn get_type(&self, env: &Environment) -> miette::Result<Type>;
 }
 
@@ -54,11 +54,5 @@ fn expect_type<T: GetType>(node: &T, env: &Environment, expeted: Type) -> miette
         Err(miette!("Type mismatch"))
     } else {
         Ok(())
-    }
-}
-
-impl Typecheck for Program {
-    fn check(&self, env: &mut Environment) -> miette::Result<()> {
-        todo!()
     }
 }
