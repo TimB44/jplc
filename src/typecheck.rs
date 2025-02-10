@@ -2,29 +2,54 @@ use std::collections::HashMap;
 
 use miette::miette;
 
-use crate::utils::Span;
+use crate::{
+    ast::{auxiliary::Binding, types},
+    utils::Span,
+};
 
-const BUILTIN_STRUCTS: [(&str, &[(&str, Type)]); 1] = [(
-    "rgba",
-    &[
-        ("r", Type::Float),
-        ("g", Type::Float),
-        ("b", Type::Float),
-        ("a", Type::Float),
-    ],
-)];
+struct StructInfo<'a> {
+    fields: Box<[(&'a str, Type<'a>)]>,
+    return_type: Type<'a>,
+}
 
 pub struct Environment<'a> {
     src: &'a [u8],
-    structs: HashMap<&'a str, &'a [(&'a str, Type)]>,
+    structs: HashMap<&'a str, StructInfo<'a>>,
 }
 
 impl<'a> Environment<'a> {
-    fn new(src: &'a [u8]) -> Self {
+    pub fn new(src: &'a [u8]) -> Self {
         Self {
             src,
-            structs: HashMap::from(BUILTIN_STRUCTS),
+            structs: HashMap::from([(
+                "rgba",
+                StructInfo {
+                    fields: [
+                        ("r", Type::Float),
+                        ("g", Type::Float),
+                        ("b", Type::Float),
+                        ("a", Type::Float),
+                    ]
+                    .to_vec()
+                    .into_boxed_slice(),
+
+                    return_type: Type::Struct("rgba"),
+                },
+            )]),
         }
+    }
+
+    pub fn add_struct(
+        &self,
+        name: &Span,
+        params: &[Binding],
+        return_type: types::Type,
+    ) -> miette::Result<()> {
+        todo!()
+    }
+
+    pub fn src(&self) -> &[u8] {
+        self.src
     }
 }
 
@@ -37,15 +62,29 @@ pub trait GetType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type {
+pub enum Type<'a> {
     Int,
     Bool,
     Float,
     // Type of the array and the rank
-    Array(Box<Type>, u8),
-    // name of struct infered from location
-    Struct(Span),
+    Array(Box<Type<'a>>, u8),
+    Struct(&'a str),
     Void,
+}
+
+impl<'a> Type<'a> {
+    pub fn from_ast_type(t: &types::Type, src: &'a [u8]) -> Type<'a> {
+        match t.kind() {
+            types::TypeKind::Int => Type::Int,
+            types::TypeKind::Bool => Type::Bool,
+            types::TypeKind::Float => Type::Float,
+            types::TypeKind::Array(inner, rank) => {
+                Type::Array(Box::new(Self::from_ast_type(inner, src)), *rank)
+            }
+            types::TypeKind::Struct => Type::Struct(t.location().as_str(src)),
+            types::TypeKind::Void => Type::Void,
+        }
+    }
 }
 
 fn expect_type<T: GetType>(node: &T, env: &Environment, expeted: Type) -> miette::Result<()> {

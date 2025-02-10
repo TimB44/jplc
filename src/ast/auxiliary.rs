@@ -18,7 +18,7 @@ impl Str {
         self.location
     }
 }
-impl Parse for Str {
+impl Parse<Str> for Str {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [str_token] = expect_tokens(ts, [TokenType::StringLit])?;
 
@@ -29,7 +29,7 @@ impl Parse for Str {
 }
 
 /// Span acts a a varible in this case
-impl Parse for Span {
+impl Parse<Span> for Span {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var_token] = expect_tokens(ts, [TokenType::Variable])?;
         Ok(var_token.span())
@@ -60,7 +60,7 @@ impl LValue {
         }
     }
 }
-impl Parse for LValue {
+impl Parse<LValue> for LValue {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var_token] = expect_tokens(ts, [TokenType::Variable])?;
         let mut location = var_token.span();
@@ -90,7 +90,7 @@ pub struct Binding {
     variable_type: Type,
 }
 
-impl Parse for Binding {
+impl Parse<Binding> for Binding {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let l_value = LValue::parse(ts)?;
         _ = expect_tokens(ts, [TokenType::Colon])?;

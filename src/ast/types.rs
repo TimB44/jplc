@@ -34,7 +34,7 @@ pub enum TypeKind {
     Void,
 }
 
-impl Parse for Type {
+impl Parse<Type> for Type {
     fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
         let mut current_type = match ts.peek_type() {
             Some(TokenType::Int) => Self::parse_int(ts)?,
@@ -138,5 +138,9 @@ impl Type {
                 format!("(ArrayType {} {})", expr.to_s_expresion(src), rank)
             }
         }
+    }
+
+    pub fn kind(&self) -> &TypeKind {
+        &self.kind
     }
 }

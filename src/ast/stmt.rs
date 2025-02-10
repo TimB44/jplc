@@ -10,20 +10,20 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Stmt {
+pub struct Stmt<'a> {
     // TODO rename once used
     _location: Span,
-    kind: StmtType,
+    kind: StmtType<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub enum StmtType {
-    Let(LValue, Expr),
-    Assert(Expr, Str),
-    Return(Expr),
+pub enum StmtType<'a> {
+    Let(LValue, Expr<'a>),
+    Assert(Expr<'a>, Str),
+    Return(Expr<'a>),
 }
 
-impl Parse for Stmt {
+impl<'a> Parse<Stmt<'a>> for Stmt<'a> {
     /// Current grammar
     /// stmt : let <lvalue> = <expr>
     ///      | assert <expr> , <string>
@@ -54,7 +54,7 @@ impl Parse for Stmt {
     }
 }
 
-impl Stmt {
+impl<'a> Stmt<'a> {
     fn parse_let(ts: &mut TokenStream) -> miette::Result<Self> {
         let [let_token] = expect_tokens(ts, [TokenType::Let])?;
         let l_value = LValue::parse(ts)?;

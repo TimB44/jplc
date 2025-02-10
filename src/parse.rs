@@ -11,13 +11,13 @@ use crate::lex::{Lexer, Token, TokenType};
 use miette::{miette, LabeledSpan, Severity};
 
 /// Something that can be parsed from a token stream
-pub(super) trait Parse: Sized {
-    fn parse(ts: &mut TokenStream) -> miette::Result<Self>;
+pub(super) trait Parse<T> {
+    fn parse<'a>(ts: &mut TokenStream<'a>) -> miette::Result<T>;
 }
 
 /// Parses P delimiter ... P and returns a boxed slice of P
 /// Does not consume the terminating token or delimiter
-pub fn parse_sequence<P: Parse>(
+pub fn parse_sequence<P: Parse<P>>(
     ts: &mut TokenStream,
     delimiter: TokenType,
     terminator: TokenType,
@@ -42,7 +42,7 @@ pub fn parse_sequence<P: Parse>(
 
 /// Parses P delimiter ... and returns a boxed slice of P
 /// Does not consume the terminating token
-pub fn parse_sequence_trailing<P: Parse>(
+pub fn parse_sequence_trailing<P: Parse<P>>(
     ts: &mut TokenStream,
     delimiter: TokenType,
     terminator: TokenType,

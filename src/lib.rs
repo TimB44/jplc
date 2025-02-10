@@ -4,6 +4,8 @@ use ast::Program;
 use cli::Mode;
 use lex::Lexer;
 use miette::NamedSource;
+use typecheck::Environment;
+use typecheck::Typecheck;
 use utils::exit_with_error;
 
 pub mod cli;
@@ -51,6 +53,11 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         );
         exit(0);
     }
+
+    let mut env = Environment::new(source.as_bytes());
+    program
+        .check(&mut env)
+        .unwrap_or_else(|err| exit_with_error(err));
 
     unreachable!()
 }

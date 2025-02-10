@@ -1,6 +1,10 @@
 //! Defines the types of functions to parse all kinds of expressions in JPL
 use super::{super::parse::parse_sequence, expect_tokens, Parse, TokenStream};
-use crate::{lex::TokenType, utils::Span};
+use crate::{
+    lex::TokenType,
+    typecheck::{self, Environment, GetType, Typecheck},
+    utils::Span,
+};
 use miette::{miette, LabeledSpan, Severity};
 
 //TODO: allow numbers one bigger due to negative numbers
@@ -8,9 +12,10 @@ const POSITIVE_INT_LIT_MAX: u64 = 9223372036854775807;
 
 /// Represents an expression in JPL
 #[derive(Debug, Clone)]
-pub struct Expr {
+pub struct Expr<'a> {
     location: Span,
-    kind: ExprKind,
+    kind: ExprKind<'a>,
+    expr_type: Option<typecheck::Type<'a>>,
 }
 
 /// Defines the different types of expressions possible in JPL
@@ -85,7 +90,7 @@ pub struct Expr {
 ///           | <empty>
 ///```
 #[derive(Debug, Clone)]
-pub enum ExprKind {
+pub enum ExprKind<'a> {
     // Simple expresions
     IntLit(u64),
     FloatLit(f64),
@@ -93,54 +98,54 @@ pub enum ExprKind {
     False,
     Var,
     Void,
-    Paren(Box<Expr>),
-    ArrayLit(Box<[Expr]>),
-    StructInit(Span, Box<[Expr]>),
-    FunctionCall(Span, Box<[Expr]>),
+    Paren(Box<Expr<'a>>),
+    ArrayLit(Box<[Expr<'a>]>),
+    StructInit(Span, Box<[Expr<'a>]>),
+    FunctionCall(Span, Box<[Expr<'a>]>),
 
     // Left recursive, handled specially
-    FieldAccess(Box<Expr>, Span),
-    ArrayIndex(Box<Expr>, Box<[Expr]>),
+    FieldAccess(Box<Expr<'a>>, Span),
+    ArrayIndex(Box<Expr<'a>>, Box<[Expr<'a>]>),
 
     // Lowest Precedence
-    If(Box<(Expr, Expr, Expr)>),
-    ArrayComp(Box<[(Span, Expr)]>, Box<Expr>),
-    Sum(Box<[(Span, Expr)]>, Box<Expr>),
+    If(Box<(Expr<'a>, Expr<'a>, Expr<'a>)>),
+    ArrayComp(Box<[(Span, Expr<'a>)]>, Box<Expr<'a>>),
+    Sum(Box<[(Span, Expr<'a>)]>, Box<Expr<'a>>),
 
     // Bool ops
-    And(Box<(Expr, Expr)>),
-    Or(Box<(Expr, Expr)>),
+    And(Box<(Expr<'a>, Expr<'a>)>),
+    Or(Box<(Expr<'a>, Expr<'a>)>),
 
     // Comparisons: <, >, <=, and >=, ==, !=
-    LessThan(Box<(Expr, Expr)>),
-    GreaterThan(Box<(Expr, Expr)>),
-    LessThanEq(Box<(Expr, Expr)>),
-    GreaterThanEq(Box<(Expr, Expr)>),
-    Eq(Box<(Expr, Expr)>),
-    NotEq(Box<(Expr, Expr)>),
+    LessThan(Box<(Expr<'a>, Expr<'a>)>),
+    GreaterThan(Box<(Expr<'a>, Expr<'a>)>),
+    LessThanEq(Box<(Expr<'a>, Expr<'a>)>),
+    GreaterThanEq(Box<(Expr<'a>, Expr<'a>)>),
+    Eq(Box<(Expr<'a>, Expr<'a>)>),
+    NotEq(Box<(Expr<'a>, Expr<'a>)>),
 
     // Additive operations + and -	}
-    Add(Box<(Expr, Expr)>),
-    Minus(Box<(Expr, Expr)>),
+    Add(Box<(Expr<'a>, Expr<'a>)>),
+    Minus(Box<(Expr<'a>, Expr<'a>)>),
 
     // Multiplicative operations *, /, and %
-    Mulitply(Box<(Expr, Expr)>),
-    Divide(Box<(Expr, Expr)>),
-    Modulo(Box<(Expr, Expr)>),
+    Mulitply(Box<(Expr<'a>, Expr<'a>)>),
+    Divide(Box<(Expr<'a>, Expr<'a>)>),
+    Modulo(Box<(Expr<'a>, Expr<'a>)>),
 
     // Unary inverse ! and negation -
-    Not(Box<Expr>),
-    Negation(Box<Expr>),
+    Not(Box<Expr<'a>>),
+    Negation(Box<Expr<'a>>),
 }
 
-type VariantBuilder = fn(Box<(Expr, Expr)>) -> ExprKind;
+type VariantBuilder<'a> = fn(Box<(Expr<'a>, Expr<'a>)>) -> ExprKind<'a>;
 
-fn parse_binary_op(
+fn parse_binary_op<'a>(
     ts: &mut TokenStream,
-    ops: &[(&str, VariantBuilder)],
-    mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr>,
-) -> miette::Result<Expr> {
-    let mut lhs = sub_class(ts)?;
+    ops: &[(&str, VariantBuilder<'a>)],
+    mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr<'a>>,
+) -> miette::Result<Expr<'a>> {
+    let mut lhs: Expr<'a> = sub_class(ts)?;
     'outer: loop {
         for (op_as_str, op_var) in ops {
             match ts.peek() {
@@ -160,6 +165,7 @@ fn parse_binary_op(
                     lhs = Expr {
                         location,
                         kind: op_var(Box::new((lhs, rhs))),
+                        expr_type: None,
                     };
                     continue 'outer;
                 }
@@ -171,14 +177,27 @@ fn parse_binary_op(
     }
 }
 
-impl Parse for Expr {
+impl<'a> Parse<Expr<'a>> for Expr<'a> {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         Self::parse_control(ts)
     }
 }
 
+impl<'a> GetType for Expr<'a> {
+    fn get_type(&self, env: &Environment) -> miette::Result<typecheck::Type> {
+        todo!()
+    }
+}
+
+impl<'a> Typecheck for Expr<'a> {
+    fn check(&self, env: &mut Environment) -> miette::Result<()> {
+        self.get_type(env)?;
+        Ok(())
+    }
+}
+
 /// Used for sum and array looping constructs
-impl Parse for (Span, Expr) {
+impl<'a> Parse<(Span, Expr<'a>)> for (Span, Expr<'a>) {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var, _] = expect_tokens(ts, [TokenType::Variable, TokenType::Colon])?;
         let expr = Expr::parse(ts)?;
@@ -186,7 +205,7 @@ impl Parse for (Span, Expr) {
     }
 }
 
-impl Expr {
+impl<'a> Expr<'a> {
     pub fn location(&self) -> Span {
         self.location
     }
@@ -213,6 +232,7 @@ impl Expr {
         Ok(Self {
             location,
             kind: ExprKind::If(Box::new((cond, true_expr, false_expr))),
+            expr_type: None,
         })
     }
     fn parse_array_comp(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -225,6 +245,7 @@ impl Expr {
         Ok(Self {
             location,
             kind: ExprKind::ArrayComp(params, Box::new(expr)),
+            expr_type: None,
         })
     }
     fn parse_sum(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -237,6 +258,8 @@ impl Expr {
         Ok(Self {
             location,
             kind: ExprKind::Sum(params, Box::new(expr)),
+
+            expr_type: None,
         })
     }
     fn parse_bool(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -297,6 +320,7 @@ impl Expr {
         Ok(Self {
             location,
             kind: expr_type(Box::new(rhs)),
+            expr_type: None,
         })
     }
 
@@ -310,6 +334,7 @@ impl Expr {
                 Ok(Self {
                     location: l_paren.span().join(&r_paren.span()),
                     kind: ExprKind::Paren(Box::new(expr)),
+                    expr_type: None,
                 })
             }
             (Some(TokenType::IntLit), _) => Self::parse_int_lit(ts),
@@ -349,6 +374,7 @@ impl Expr {
                     expr = Self {
                         location,
                         kind: ExprKind::FieldAccess(Box::new(expr), var_token.span()),
+                        expr_type: None,
                     }
                 }
                 Some(TokenType::LSquare) => {
@@ -359,6 +385,7 @@ impl Expr {
                     expr = Self {
                         location,
                         kind: ExprKind::ArrayIndex(Box::new(expr), indices),
+                        expr_type: None,
                     }
                 }
                 _ => break expr,
@@ -386,6 +413,7 @@ impl Expr {
         Ok(Self {
             location: int_lit_token.span(),
             kind: ExprKind::IntLit(int_val),
+            expr_type: None,
         })
     }
 
@@ -409,6 +437,7 @@ impl Expr {
         Ok(Self {
             location: float_lit_token.span(),
             kind: ExprKind::FloatLit(float_val),
+            expr_type: None,
         })
     }
 
@@ -417,6 +446,7 @@ impl Expr {
         Ok(Self {
             location: true_token.span(),
             kind: ExprKind::True,
+            expr_type: None,
         })
     }
 
@@ -425,6 +455,7 @@ impl Expr {
         Ok(Self {
             location: false_token.span(),
             kind: ExprKind::False,
+            expr_type: None,
         })
     }
 
@@ -433,6 +464,7 @@ impl Expr {
         Ok(Self {
             location: void_token.span(),
             kind: ExprKind::Void,
+            expr_type: None,
         })
     }
 
@@ -441,6 +473,7 @@ impl Expr {
         Ok(Self {
             location: var_token.span(),
             kind: ExprKind::Var,
+            expr_type: None,
         })
     }
 
@@ -451,6 +484,7 @@ impl Expr {
         Ok(Self {
             location: l_square_token.span().join(&rb_token.span()),
             kind: ExprKind::ArrayLit(items),
+            expr_type: None,
         })
     }
 
@@ -463,6 +497,7 @@ impl Expr {
         Ok(Self {
             location,
             kind: ExprKind::StructInit(var_token.span(), members),
+            expr_type: None,
         })
     }
 
@@ -475,6 +510,7 @@ impl Expr {
         Ok(Self {
             location,
             kind: ExprKind::FunctionCall(var_token.span(), args),
+            expr_type: None,
         })
     }
 

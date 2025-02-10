@@ -18,26 +18,26 @@ use miette::{miette, LabeledSpan, Severity};
 ///
 /// These are the top level items in a JPL source file
 #[derive(Debug, Clone)]
-pub struct Cmd {
-    kind: CmdKind,
+pub struct Cmd<'a> {
+    kind: CmdKind<'a>,
     location: Span,
 }
 
 /// Enumerates the different types of Commands
 #[derive(Debug, Clone)]
-pub enum CmdKind {
+pub enum CmdKind<'a> {
     ReadImage(Str, LValue),
-    WriteImage(Expr, Str),
-    Let(LValue, Expr),
-    Assert(Expr, Str),
+    WriteImage(Expr<'a>, Str),
+    Let(LValue, Expr<'a>),
+    Assert(Expr<'a>, Str),
     Print(Str),
-    Show(Expr),
-    Time(Box<Cmd>),
+    Show(Expr<'a>),
+    Time(Box<Cmd<'a>>),
     Function {
         name: Span,
         params: Box<[Binding]>,
         return_type: Type,
-        body: Box<[Stmt]>,
+        body: Box<[Stmt<'a>]>,
     },
     Struct {
         name: Span,
@@ -60,7 +60,7 @@ pub enum CmdKind {
 ///    | struct <variable> { ;
 ///          <variable>: <type> ; ... ;
 ///      }
-impl Parse for Cmd {
+impl<'a> Parse<Cmd<'a>> for Cmd<'a> {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         match ts.peek_type() {
             Some(TokenType::Read) => Self::parse_read_image(ts),
@@ -94,13 +94,32 @@ impl Parse for Cmd {
     }
 }
 
-impl Typecheck for Cmd {
+impl<'a> Typecheck for Cmd<'a> {
     fn check(&self, env: &mut Environment) -> miette::Result<()> {
-        todo!()
+        match &self.kind {
+            CmdKind::ReadImage(_, lvalue) => todo!(),
+            CmdKind::WriteImage(expr, _) => todo!(),
+            CmdKind::Let(lvalue, expr) => todo!(),
+            CmdKind::Assert(expr, _) => todo!(),
+            CmdKind::Print(_) => todo!(),
+            CmdKind::Show(expr) => expr.check(env),
+            CmdKind::Time(cmd) => todo!(),
+            CmdKind::Function {
+                name,
+                params,
+                return_type,
+                body,
+            } => todo!(),
+            CmdKind::Struct { name, fields } => {
+                //let struct_name = name.as_str(src);
+
+                todo!()
+            }
+        }
     }
 }
 
-impl Parse for (Span, Type) {
+impl Parse<(Span, Type)> for (Span, Type) {
     /// Parses <variable>: <type>
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var_token, _] = expect_tokens(ts, [TokenType::Variable, TokenType::Colon])?;
@@ -109,8 +128,8 @@ impl Parse for (Span, Type) {
     }
 }
 
-impl Cmd {
-    fn parse_read_image(ts: &mut TokenStream) -> miette::Result<Self> {
+impl<'a> Cmd<'a> {
+    fn parse_read_image(ts: &mut TokenStream) -> miette::Result<Cmd<'a>> {
         let [read_token, _] = expect_tokens(ts, [TokenType::Read, TokenType::Image])?;
         let str = Str::parse(ts)?;
         _ = expect_tokens(ts, [TokenType::To])?;
@@ -192,7 +211,7 @@ impl Cmd {
         })
     }
 
-    fn parse_function(ts: &mut TokenStream<'_>) -> miette::Result<Cmd> {
+    fn parse_function(ts: &mut TokenStream) -> miette::Result<Cmd<'a>> {
         let [fn_token] = expect_tokens(ts, [TokenType::Fn])?;
         let [name] = expect_tokens(ts, [TokenType::Variable])?;
         _ = expect_tokens(ts, [TokenType::LParen])?;
@@ -217,7 +236,7 @@ impl Cmd {
         })
     }
 
-    fn parse_struct(ts: &mut TokenStream<'_>) -> miette::Result<Cmd> {
+    fn parse_struct(ts: &mut TokenStream) -> miette::Result<Cmd<'a>> {
         let [struct_token] = expect_tokens(ts, [TokenType::Struct])?;
         let [name] = expect_tokens(ts, [TokenType::Variable])?;
         _ = expect_tokens(ts, [TokenType::LCurly])?;
