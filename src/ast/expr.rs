@@ -504,12 +504,46 @@ impl Expr {
 }
 
 impl Expr<Typed> {
-    fn expect_type<'a>(&self, expected: &Typed) -> miette::Result<()> {
-        todo!()
+    fn expect_type<'a>(&self, expected: &Typed, env: &Environment) -> miette::Result<()> {
+        if &self.type_data == expected {
+            return Ok(());
+        }
+        Err(miette!(
+            severity = Severity::Error,
+            labels = vec![LabeledSpan::new(
+                Some(format!(
+                    "expected type: {}, found: {}",
+                    expected.as_str(env),
+                    self.type_data.as_str(env)
+                )),
+                self.location.start(),
+                self.location.end(),
+            )],
+            "Type mismatch"
+        ))
     }
 
-    fn expect_one_of_types(&self, expected: &[Typed]) -> miette::Result<()> {
-        todo!()
+    fn expect_one_of_types(&self, expected: &[Typed], env: &Environment) -> miette::Result<()> {
+        if expected.contains(&self.type_data) {
+            return Ok(());
+        }
+        Err(miette!(
+            severity = Severity::Error,
+            labels = vec![LabeledSpan::new(
+                Some(format!(
+                    "expected one of these types: [{}], found: {}",
+                    expected
+                        .iter()
+                        .map(|t| t.as_str(env))
+                        .collect::<Vec<String>>()
+                        .join(","),
+                    self.type_data.as_str(env),
+                )),
+                self.location.start(),
+                self.location.end(),
+            )],
+            "Type mismatch"
+        ))
     }
 }
 
@@ -518,14 +552,14 @@ impl Expr {
         operands: Box<(Expr, Expr)>,
         varient: fn(Box<(Expr<Typed>, Expr<Typed>)>) -> ExprKind<Typed>,
         location: Span,
-        env: &mut Environment,
+        env: &Environment,
     ) -> miette::Result<Expr<Typed>> {
         let (lhs, rhs) = *operands;
         let typed_lhs = lhs.typecheck(env)?;
         let typed_rhs = rhs.typecheck(env)?;
 
-        typed_lhs.expect_one_of_types(&[Typed::Int, Typed::Float])?;
-        typed_rhs.expect_type(&typed_lhs.type_data)?;
+        typed_lhs.expect_one_of_types(&[Typed::Int, Typed::Float], env)?;
+        typed_rhs.expect_type(&typed_lhs.type_data, env)?;
 
         Ok(Expr {
             location,
@@ -537,15 +571,15 @@ impl Expr {
         operands: Box<(Expr, Expr)>,
         varient: fn(Box<(Expr<Typed>, Expr<Typed>)>) -> ExprKind<Typed>,
         location: Span,
-        env: &mut Environment,
+        env: &Environment,
     ) -> miette::Result<Expr<Typed>> {
         let (lhs, rhs) = *operands;
         let typed_lhs = lhs.typecheck(env)?;
         let typed_rhs = rhs.typecheck(env)?;
 
-        typed_lhs.expect_one_of_types(&[Typed::Int, Typed::Float])?;
+        typed_lhs.expect_one_of_types(&[Typed::Int, Typed::Float], env)?;
         let output_type = typed_lhs.type_data.clone();
-        typed_rhs.expect_type(&output_type)?;
+        typed_rhs.expect_type(&output_type, env)?;
 
         Ok(Expr {
             location,
@@ -554,7 +588,7 @@ impl Expr {
         })
     }
 
-    pub fn typecheck(self, env: &mut Environment) -> miette::Result<Expr<Typed>> {
+    pub fn typecheck(self, env: &Environment) -> miette::Result<Expr<Typed>> {
         Ok(match self.kind {
             ExprKind::IntLit(val) => Expr {
                 type_data: Typed::Int,
@@ -620,7 +654,7 @@ impl Expr {
                 typed_exprs
                     .iter()
                     .skip(1)
-                    .map(|e| e.expect_type(&element_type))
+                    .map(|e| e.expect_type(&element_type, env))
                     .collect::<Result<Vec<()>, _>>()?;
 
                 Expr {
@@ -629,16 +663,58 @@ impl Expr {
                     type_data: Typed::Array(Box::new(element_type), 1),
                 }
             }
-            ExprKind::StructInit(span, exprs) => todo!(),
+            ExprKind::StructInit(span, exprs) => {
+                let info = env.get_struct(span)?;
+                if exprs.len() != info.fields().len() {
+                    return Err(miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::new(
+                            Some(format!(
+                                "Expected {} fields, found {}",
+                                info.fields().len(),
+                                exprs.len()
+                            )),
+                            self.location.start(),
+                            self.location.len(),
+                        )],
+                        "Incorrect number of fields for struct: {}",
+                        span.as_str(env.src())
+                    ));
+                }
+
+                let checked_exprs = exprs
+                    .to_vec()
+                    .into_iter()
+                    .zip(info.fields())
+                    .map(|(e, (_, t))| {
+                        e.typecheck(env).and_then(|e| {
+                            e.expect_type(&t, env)?;
+                            Ok(e)
+                        })
+                    })
+                    .collect::<Result<Vec<Expr<Typed>>, _>>()?
+                    .into_boxed_slice();
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::StructInit(span, checked_exprs),
+                    type_data: Typed::Struct(info.id()),
+                }
+            }
             ExprKind::FunctionCall(span, exprs) => todo!(),
             ExprKind::FieldAccess(expr, span) => {
                 let typed_struct = expr.typecheck(env)?;
-                let struct_fields = match typed_struct.type_data {
-                    Typed::Struct(id) => env,
-                    _ => unreachable!(),
+                let id = match typed_struct.type_data {
+                    Typed::Struct(id) => id,
+                    _ => 0,
                 };
 
-                todo!()
+                typed_struct.expect_type(&Typed::Struct(id), env)?;
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::FieldAccess(Box::new(typed_struct), span),
+                    type_data: Typed::Struct(id),
+                }
             }
 
             ExprKind::ArrayIndex(expr, exprs) => {
@@ -685,7 +761,7 @@ impl Expr {
 
                 typed_exprs
                     .iter()
-                    .map(|e| e.expect_type(&Typed::Int))
+                    .map(|e| e.expect_type(&Typed::Int, env))
                     .collect::<Result<Vec<()>, _>>()?;
 
                 let element_type = *element_type.clone();
@@ -702,10 +778,10 @@ impl Expr {
                 let typed_cond = cond.typecheck(env)?;
                 let typed_true_branch = true_branch.typecheck(env)?;
                 let typed_false_branch = false_branch.typecheck(env)?;
-                typed_cond.expect_type(&Typed::Bool)?;
+                typed_cond.expect_type(&Typed::Bool, env)?;
                 let branch_type = &typed_true_branch.type_data.clone();
 
-                typed_false_branch.expect_type(branch_type)?;
+                typed_false_branch.expect_type(branch_type, env)?;
 
                 Expr {
                     location: self.location,
@@ -723,8 +799,8 @@ impl Expr {
                 let (lhs, rhs) = *operands;
                 let typed_lhs = lhs.typecheck(env)?;
                 let typed_rhs = rhs.typecheck(env)?;
-                typed_lhs.expect_type(&Typed::Bool)?;
-                typed_rhs.expect_type(&Typed::Bool)?;
+                typed_lhs.expect_type(&Typed::Bool, env)?;
+                typed_rhs.expect_type(&Typed::Bool, env)?;
 
                 Expr {
                     location: self.location,
@@ -736,8 +812,8 @@ impl Expr {
                 let (lhs, rhs) = *operands;
                 let typed_lhs = lhs.typecheck(env)?;
                 let typed_rhs = rhs.typecheck(env)?;
-                typed_lhs.expect_type(&Typed::Bool)?;
-                typed_rhs.expect_type(&Typed::Bool)?;
+                typed_lhs.expect_type(&Typed::Bool, env)?;
+                typed_rhs.expect_type(&Typed::Bool, env)?;
 
                 Expr {
                     location: self.location,
@@ -746,7 +822,6 @@ impl Expr {
                 }
             }
 
-            //
             ExprKind::LessThan(operands) => {
                 Self::typecheck_cmp_binop(operands, ExprKind::LessThan, self.location, env)?
             }
@@ -782,7 +857,7 @@ impl Expr {
             }
             ExprKind::Not(expr) => {
                 let typed_expr = expr.typecheck(env)?;
-                typed_expr.expect_type(&Typed::Bool)?;
+                typed_expr.expect_type(&Typed::Bool, env)?;
 
                 Expr {
                     location: self.location,
@@ -792,7 +867,7 @@ impl Expr {
             }
             ExprKind::Negation(expr) => {
                 let typed_expr = expr.typecheck(env)?;
-                typed_expr.expect_one_of_types(&[Typed::Int, Typed::Float])?;
+                typed_expr.expect_one_of_types(&[Typed::Int, Typed::Float], env)?;
 
                 Expr {
                     location: self.location,
@@ -801,8 +876,6 @@ impl Expr {
                 }
             }
         })
-
-        //self.expr_type = Some(t);
     }
 }
 impl<T: TypeState> Expr<T> {
