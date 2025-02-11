@@ -10,7 +10,7 @@ use super::{
     Parse, TokenStream,
 };
 
-use crate::typecheck::{Environment, Typecheck};
+use crate::typecheck::{Environment, TypeState, UnTyped};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
@@ -18,26 +18,26 @@ use miette::{miette, LabeledSpan, Severity};
 ///
 /// These are the top level items in a JPL source file
 #[derive(Debug, Clone)]
-pub struct Cmd<'a> {
-    kind: CmdKind<'a>,
+pub struct Cmd<T: TypeState = UnTyped> {
+    kind: CmdKind<T>,
     location: Span,
 }
 
 /// Enumerates the different types of Commands
 #[derive(Debug, Clone)]
-pub enum CmdKind<'a> {
+pub enum CmdKind<T: TypeState = UnTyped> {
     ReadImage(Str, LValue),
-    WriteImage(Expr<'a>, Str),
-    Let(LValue, Expr<'a>),
-    Assert(Expr<'a>, Str),
+    WriteImage(Expr<T>, Str),
+    Let(LValue, Expr<T>),
+    Assert(Expr<T>, Str),
     Print(Str),
-    Show(Expr<'a>),
-    Time(Box<Cmd<'a>>),
+    Show(Expr),
+    Time(Box<Cmd<T>>),
     Function {
         name: Span,
         params: Box<[Binding]>,
         return_type: Type,
-        body: Box<[Stmt<'a>]>,
+        body: Box<[Stmt<T>]>,
     },
     Struct {
         name: Span,
@@ -60,7 +60,7 @@ pub enum CmdKind<'a> {
 ///    | struct <variable> { ;
 ///          <variable>: <type> ; ... ;
 ///      }
-impl<'a> Parse<Cmd<'a>> for Cmd<'a> {
+impl Parse<Cmd> for Cmd {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         match ts.peek_type() {
             Some(TokenType::Read) => Self::parse_read_image(ts),
@@ -94,30 +94,30 @@ impl<'a> Parse<Cmd<'a>> for Cmd<'a> {
     }
 }
 
-impl<'a> Typecheck for Cmd<'a> {
-    fn check(&self, env: &mut Environment) -> miette::Result<()> {
-        match &self.kind {
-            CmdKind::ReadImage(_, lvalue) => todo!(),
-            CmdKind::WriteImage(expr, _) => todo!(),
-            CmdKind::Let(lvalue, expr) => todo!(),
-            CmdKind::Assert(expr, _) => todo!(),
-            CmdKind::Print(_) => todo!(),
-            CmdKind::Show(expr) => expr.check(env),
-            CmdKind::Time(cmd) => todo!(),
-            CmdKind::Function {
-                name,
-                params,
-                return_type,
-                body,
-            } => todo!(),
-            CmdKind::Struct { name, fields } => {
-                //let struct_name = name.as_str(src);
-
-                todo!()
-            }
-        }
-    }
-}
+//impl Typecheck for Cmd {
+//    fn check(&mut self, env: &mut Environment) -> miette::Result<()> {
+//        match &mut self.kind {
+//            CmdKind::ReadImage(_, lvalue) => todo!(),
+//            CmdKind::WriteImage(expr, _) => todo!(),
+//            CmdKind::Let(lvalue, expr) => todo!(),
+//            CmdKind::Assert(expr, _) => todo!(),
+//            CmdKind::Print(_) => todo!(),
+//            CmdKind::Show(expr) => expr.check(env),
+//            CmdKind::Time(cmd) => todo!(),
+//            CmdKind::Function {
+//                name,
+//                params,
+//                return_type,
+//                body,
+//            } => todo!(),
+//            CmdKind::Struct { name, fields } => {
+//                //let struct_name = name.as_str(src);
+//
+//                todo!()
+//            }
+//        }
+//    }
+//}
 
 impl Parse<(Span, Type)> for (Span, Type) {
     /// Parses <variable>: <type>
@@ -128,8 +128,8 @@ impl Parse<(Span, Type)> for (Span, Type) {
     }
 }
 
-impl<'a> Cmd<'a> {
-    fn parse_read_image(ts: &mut TokenStream) -> miette::Result<Cmd<'a>> {
+impl Cmd {
+    fn parse_read_image(ts: &mut TokenStream) -> miette::Result<Cmd> {
         let [read_token, _] = expect_tokens(ts, [TokenType::Read, TokenType::Image])?;
         let str = Str::parse(ts)?;
         _ = expect_tokens(ts, [TokenType::To])?;
@@ -211,7 +211,7 @@ impl<'a> Cmd<'a> {
         })
     }
 
-    fn parse_function(ts: &mut TokenStream) -> miette::Result<Cmd<'a>> {
+    fn parse_function(ts: &mut TokenStream) -> miette::Result<Cmd> {
         let [fn_token] = expect_tokens(ts, [TokenType::Fn])?;
         let [name] = expect_tokens(ts, [TokenType::Variable])?;
         _ = expect_tokens(ts, [TokenType::LParen])?;
@@ -236,7 +236,7 @@ impl<'a> Cmd<'a> {
         })
     }
 
-    fn parse_struct(ts: &mut TokenStream) -> miette::Result<Cmd<'a>> {
+    fn parse_struct(ts: &mut TokenStream) -> miette::Result<Cmd> {
         let [struct_token] = expect_tokens(ts, [TokenType::Struct])?;
         let [name] = expect_tokens(ts, [TokenType::Variable])?;
         _ = expect_tokens(ts, [TokenType::LCurly])?;

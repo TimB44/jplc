@@ -1,7 +1,6 @@
 use crate::{
     lex::{Lexer, TokenType},
     parse::{expect_tokens, next_match, parse_sequence_trailing, TokenStream},
-    typecheck::{self, Typecheck},
 };
 
 use super::parse::Parse;
@@ -17,11 +16,11 @@ pub mod types;
 ///
 /// This is the top-level item responsible for parsing all other components.
 #[derive(Debug, Clone)]
-pub struct Program<'a> {
-    commands: Box<[Cmd<'a>]>,
+pub struct Program {
+    commands: Box<[Cmd]>,
 }
 
-impl<'a> Parse<Program<'a>> for Program<'a> {
+impl<'a> Parse<Program> for Program {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         // Remove a potential leading newline
         if next_match!(ts, TokenType::Newline) {
@@ -37,7 +36,7 @@ impl<'a> Parse<Program<'a>> for Program<'a> {
     }
 }
 
-impl<'a> Program<'a> {
+impl Program {
     /// Creates a `Program` by parsing tokens from the lexer.
     pub fn new(lexer: Lexer) -> miette::Result<Self> {
         Self::parse(&mut TokenStream::new(lexer))
@@ -49,11 +48,11 @@ impl<'a> Program<'a> {
     }
 }
 
-impl<'a> Typecheck for Program<'a> {
-    fn check(&self, env: &mut typecheck::Environment) -> miette::Result<()> {
-        for cmd in &self.commands {
-            cmd.check(env)?;
-        }
-        Ok(())
-    }
-}
+//impl<'a> Typecheck for Program<'a> {
+//    fn check(&mut self, env: &mut typecheck::Environment) -> miette::Result<()> {
+//        for cmd in &self.commands {
+//            cmd.check(env)?;
+//        }
+//        Ok(())
+//    }
+//}

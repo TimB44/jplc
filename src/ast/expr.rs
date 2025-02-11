@@ -1,8 +1,9 @@
 //! Defines the types of functions to parse all kinds of expressions in JPL
+
 use super::{super::parse::parse_sequence, expect_tokens, Parse, TokenStream};
 use crate::{
     lex::TokenType,
-    typecheck::{self, Environment, GetType, Typecheck},
+    typecheck::{Environment, TypeState, Typed, UnTyped},
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};
@@ -12,10 +13,10 @@ const POSITIVE_INT_LIT_MAX: u64 = 9223372036854775807;
 
 /// Represents an expression in JPL
 #[derive(Debug, Clone)]
-pub struct Expr<'a> {
+pub struct Expr<T: TypeState = UnTyped> {
     location: Span,
-    kind: ExprKind<'a>,
-    expr_type: Option<typecheck::Type<'a>>,
+    kind: ExprKind<T>,
+    type_data: T,
 }
 
 /// Defines the different types of expressions possible in JPL
@@ -90,7 +91,7 @@ pub struct Expr<'a> {
 ///           | <empty>
 ///```
 #[derive(Debug, Clone)]
-pub enum ExprKind<'a> {
+pub enum ExprKind<T: TypeState = UnTyped> {
     // Simple expresions
     IntLit(u64),
     FloatLit(f64),
@@ -98,54 +99,54 @@ pub enum ExprKind<'a> {
     False,
     Var,
     Void,
-    Paren(Box<Expr<'a>>),
-    ArrayLit(Box<[Expr<'a>]>),
-    StructInit(Span, Box<[Expr<'a>]>),
-    FunctionCall(Span, Box<[Expr<'a>]>),
+    Paren(Box<Expr<T>>),
+    ArrayLit(Box<[Expr<T>]>),
+    StructInit(Span, Box<[Expr<T>]>),
+    FunctionCall(Span, Box<[Expr<T>]>),
 
     // Left recursive, handled specially
-    FieldAccess(Box<Expr<'a>>, Span),
-    ArrayIndex(Box<Expr<'a>>, Box<[Expr<'a>]>),
+    FieldAccess(Box<Expr<T>>, Span),
+    ArrayIndex(Box<Expr<T>>, Box<[Expr<T>]>),
 
     // Lowest Precedence
-    If(Box<(Expr<'a>, Expr<'a>, Expr<'a>)>),
-    ArrayComp(Box<[(Span, Expr<'a>)]>, Box<Expr<'a>>),
-    Sum(Box<[(Span, Expr<'a>)]>, Box<Expr<'a>>),
+    If(Box<(Expr<T>, Expr<T>, Expr<T>)>),
+    ArrayComp(Box<[(Span, Expr<T>)]>, Box<Expr<T>>),
+    Sum(Box<[(Span, Expr<T>)]>, Box<Expr<T>>),
 
     // Bool ops
-    And(Box<(Expr<'a>, Expr<'a>)>),
-    Or(Box<(Expr<'a>, Expr<'a>)>),
+    And(Box<(Expr<T>, Expr<T>)>),
+    Or(Box<(Expr<T>, Expr<T>)>),
 
     // Comparisons: <, >, <=, and >=, ==, !=
-    LessThan(Box<(Expr<'a>, Expr<'a>)>),
-    GreaterThan(Box<(Expr<'a>, Expr<'a>)>),
-    LessThanEq(Box<(Expr<'a>, Expr<'a>)>),
-    GreaterThanEq(Box<(Expr<'a>, Expr<'a>)>),
-    Eq(Box<(Expr<'a>, Expr<'a>)>),
-    NotEq(Box<(Expr<'a>, Expr<'a>)>),
+    LessThan(Box<(Expr<T>, Expr<T>)>),
+    GreaterThan(Box<(Expr<T>, Expr<T>)>),
+    LessThanEq(Box<(Expr<T>, Expr<T>)>),
+    GreaterThanEq(Box<(Expr<T>, Expr<T>)>),
+    Eq(Box<(Expr<T>, Expr<T>)>),
+    NotEq(Box<(Expr<T>, Expr<T>)>),
 
     // Additive operations + and -	}
-    Add(Box<(Expr<'a>, Expr<'a>)>),
-    Minus(Box<(Expr<'a>, Expr<'a>)>),
+    Add(Box<(Expr<T>, Expr<T>)>),
+    Minus(Box<(Expr<T>, Expr<T>)>),
 
     // Multiplicative operations *, /, and %
-    Mulitply(Box<(Expr<'a>, Expr<'a>)>),
-    Divide(Box<(Expr<'a>, Expr<'a>)>),
-    Modulo(Box<(Expr<'a>, Expr<'a>)>),
+    Mulitply(Box<(Expr<T>, Expr<T>)>),
+    Divide(Box<(Expr<T>, Expr<T>)>),
+    Modulo(Box<(Expr<T>, Expr<T>)>),
 
     // Unary inverse ! and negation -
-    Not(Box<Expr<'a>>),
-    Negation(Box<Expr<'a>>),
+    Not(Box<Expr<T>>),
+    Negation(Box<Expr<T>>),
 }
 
-type VariantBuilder<'a> = fn(Box<(Expr<'a>, Expr<'a>)>) -> ExprKind<'a>;
+type VariantBuilder = fn(Box<(Expr, Expr)>) -> ExprKind;
 
 fn parse_binary_op<'a>(
     ts: &mut TokenStream,
-    ops: &[(&str, VariantBuilder<'a>)],
-    mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr<'a>>,
-) -> miette::Result<Expr<'a>> {
-    let mut lhs: Expr<'a> = sub_class(ts)?;
+    ops: &[(&str, VariantBuilder)],
+    mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr>,
+) -> miette::Result<Expr> {
+    let mut lhs: Expr = sub_class(ts)?;
     'outer: loop {
         for (op_as_str, op_var) in ops {
             match ts.peek() {
@@ -165,7 +166,7 @@ fn parse_binary_op<'a>(
                     lhs = Expr {
                         location,
                         kind: op_var(Box::new((lhs, rhs))),
-                        expr_type: None,
+                        type_data: UnTyped {},
                     };
                     continue 'outer;
                 }
@@ -177,27 +178,14 @@ fn parse_binary_op<'a>(
     }
 }
 
-impl<'a> Parse<Expr<'a>> for Expr<'a> {
+impl Parse<Expr> for Expr {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         Self::parse_control(ts)
     }
 }
 
-impl<'a> GetType for Expr<'a> {
-    fn get_type(&self, env: &Environment) -> miette::Result<typecheck::Type> {
-        todo!()
-    }
-}
-
-impl<'a> Typecheck for Expr<'a> {
-    fn check(&self, env: &mut Environment) -> miette::Result<()> {
-        self.get_type(env)?;
-        Ok(())
-    }
-}
-
 /// Used for sum and array looping constructs
-impl<'a> Parse<(Span, Expr<'a>)> for (Span, Expr<'a>) {
+impl<'a> Parse<(Span, Expr)> for (Span, Expr) {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var, _] = expect_tokens(ts, [TokenType::Variable, TokenType::Colon])?;
         let expr = Expr::parse(ts)?;
@@ -205,7 +193,7 @@ impl<'a> Parse<(Span, Expr<'a>)> for (Span, Expr<'a>) {
     }
 }
 
-impl<'a> Expr<'a> {
+impl Expr {
     pub fn location(&self) -> Span {
         self.location
     }
@@ -232,7 +220,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location,
             kind: ExprKind::If(Box::new((cond, true_expr, false_expr))),
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
     fn parse_array_comp(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -245,7 +233,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location,
             kind: ExprKind::ArrayComp(params, Box::new(expr)),
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
     fn parse_sum(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -259,7 +247,7 @@ impl<'a> Expr<'a> {
             location,
             kind: ExprKind::Sum(params, Box::new(expr)),
 
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
     fn parse_bool(ts: &mut TokenStream) -> miette::Result<Self> {
@@ -320,7 +308,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location,
             kind: expr_type(Box::new(rhs)),
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -334,7 +322,7 @@ impl<'a> Expr<'a> {
                 Ok(Self {
                     location: l_paren.span().join(&r_paren.span()),
                     kind: ExprKind::Paren(Box::new(expr)),
-                    expr_type: None,
+                    type_data: UnTyped {},
                 })
             }
             (Some(TokenType::IntLit), _) => Self::parse_int_lit(ts),
@@ -374,7 +362,7 @@ impl<'a> Expr<'a> {
                     expr = Self {
                         location,
                         kind: ExprKind::FieldAccess(Box::new(expr), var_token.span()),
-                        expr_type: None,
+                        type_data: UnTyped {},
                     }
                 }
                 Some(TokenType::LSquare) => {
@@ -385,7 +373,7 @@ impl<'a> Expr<'a> {
                     expr = Self {
                         location,
                         kind: ExprKind::ArrayIndex(Box::new(expr), indices),
-                        expr_type: None,
+                        type_data: UnTyped {},
                     }
                 }
                 _ => break expr,
@@ -413,7 +401,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location: int_lit_token.span(),
             kind: ExprKind::IntLit(int_val),
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -437,7 +425,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location: float_lit_token.span(),
             kind: ExprKind::FloatLit(float_val),
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -446,7 +434,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location: true_token.span(),
             kind: ExprKind::True,
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -455,7 +443,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location: false_token.span(),
             kind: ExprKind::False,
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -464,7 +452,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location: void_token.span(),
             kind: ExprKind::Void,
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -473,7 +461,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location: var_token.span(),
             kind: ExprKind::Var,
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -484,7 +472,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location: l_square_token.span().join(&rb_token.span()),
             kind: ExprKind::ArrayLit(items),
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -497,7 +485,7 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location,
             kind: ExprKind::StructInit(var_token.span(), members),
-            expr_type: None,
+            type_data: UnTyped {},
         })
     }
 
@@ -510,11 +498,316 @@ impl<'a> Expr<'a> {
         Ok(Self {
             location,
             kind: ExprKind::FunctionCall(var_token.span(), args),
-            expr_type: None,
+            type_data: UnTyped {},
+        })
+    }
+}
+
+impl Expr<Typed> {
+    fn expect_type<'a>(&self, expected: &Typed) -> miette::Result<()> {
+        todo!()
+    }
+
+    fn expect_one_of_types(&self, expected: &[Typed]) -> miette::Result<()> {
+        todo!()
+    }
+}
+
+impl Expr {
+    fn typecheck_cmp_binop(
+        operands: Box<(Expr, Expr)>,
+        varient: fn(Box<(Expr<Typed>, Expr<Typed>)>) -> ExprKind<Typed>,
+        location: Span,
+        env: &mut Environment,
+    ) -> miette::Result<Expr<Typed>> {
+        let (lhs, rhs) = *operands;
+        let typed_lhs = lhs.typecheck(env)?;
+        let typed_rhs = rhs.typecheck(env)?;
+
+        typed_lhs.expect_one_of_types(&[Typed::Int, Typed::Float])?;
+        typed_rhs.expect_type(&typed_lhs.type_data)?;
+
+        Ok(Expr {
+            location,
+            kind: varient(Box::new((typed_lhs, typed_rhs))),
+            type_data: Typed::Bool,
+        })
+    }
+    fn typecheck_numerical_binop(
+        operands: Box<(Expr, Expr)>,
+        varient: fn(Box<(Expr<Typed>, Expr<Typed>)>) -> ExprKind<Typed>,
+        location: Span,
+        env: &mut Environment,
+    ) -> miette::Result<Expr<Typed>> {
+        let (lhs, rhs) = *operands;
+        let typed_lhs = lhs.typecheck(env)?;
+        let typed_rhs = rhs.typecheck(env)?;
+
+        typed_lhs.expect_one_of_types(&[Typed::Int, Typed::Float])?;
+        let output_type = typed_lhs.type_data.clone();
+        typed_rhs.expect_type(&output_type)?;
+
+        Ok(Expr {
+            location,
+            kind: varient(Box::new((typed_lhs, typed_rhs))),
+            type_data: output_type,
         })
     }
 
+    pub fn typecheck(self, env: &mut Environment) -> miette::Result<Expr<Typed>> {
+        Ok(match self.kind {
+            ExprKind::IntLit(val) => Expr {
+                type_data: Typed::Int,
+                location: self.location,
+                kind: ExprKind::IntLit(val),
+            },
+
+            ExprKind::FloatLit(val) => Expr {
+                type_data: Typed::Float,
+                location: self.location,
+                kind: ExprKind::FloatLit(val),
+            },
+
+            ExprKind::True => Expr {
+                type_data: Typed::Bool,
+                location: self.location,
+                kind: ExprKind::True,
+            },
+            ExprKind::False => Expr {
+                type_data: Typed::Bool,
+                location: self.location,
+                kind: ExprKind::False,
+            },
+
+            ExprKind::Var => todo!(),
+            ExprKind::Void => Expr {
+                type_data: Typed::Void,
+                location: self.location,
+                kind: ExprKind::Void,
+            },
+            ExprKind::Paren(expr) => {
+                let typed_expr = expr.typecheck(env)?;
+
+                Expr {
+                    type_data: typed_expr.type_data.clone(),
+                    location: self.location,
+                    kind: ExprKind::Paren(Box::new(typed_expr)),
+                }
+            }
+
+            ExprKind::ArrayLit(exprs) => {
+                if exprs.is_empty() {
+                    return Err(miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::new(
+                            Some("array literals can not be empty".to_string()),
+                            self.location.start(),
+                            self.location.len()
+                        )],
+                        "Invalid array literal"
+                    ));
+                }
+
+                // TODO: May be able to remove the to_vec
+                let typed_exprs = exprs
+                    .to_vec()
+                    .into_iter()
+                    .map(|e| e.typecheck(env))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_boxed_slice();
+
+                let element_type = typed_exprs[0].type_data.clone();
+                typed_exprs
+                    .iter()
+                    .skip(1)
+                    .map(|e| e.expect_type(&element_type))
+                    .collect::<Result<Vec<()>, _>>()?;
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::ArrayLit(typed_exprs),
+                    type_data: Typed::Array(Box::new(element_type), 1),
+                }
+            }
+            ExprKind::StructInit(span, exprs) => todo!(),
+            ExprKind::FunctionCall(span, exprs) => todo!(),
+            ExprKind::FieldAccess(expr, span) => {
+                let typed_struct = expr.typecheck(env)?;
+                let struct_fields = match typed_struct.type_data {
+                    Typed::Struct(id) => env,
+                    _ => unreachable!(),
+                };
+
+                todo!()
+            }
+
+            ExprKind::ArrayIndex(expr, exprs) => {
+                let arr = expr.typecheck(env)?;
+                let (element_type, rank) = match &arr.type_data {
+                    Typed::Array(element_type, rank) => (element_type, rank),
+                    t @ _ => {
+                        return Err(miette!(
+                            severity = Severity::Error,
+                            labels = vec![LabeledSpan::new(
+                                Some(format!(
+                                    "Expected type array type, found: {}",
+                                    t.as_str(env)
+                                )),
+                                //expr.location.start(),
+                                //expr.location.len()
+                                0,
+                                1
+                            )],
+                            "Can only index arrays"
+                        ));
+                    }
+                };
+
+                if *rank as usize != exprs.len() {
+                    return Err(miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::new(
+                            Some(format!("Expected {} indices found {}", rank, exprs.len())),
+                            self.location.start(),
+                            self.location.len()
+                        )],
+                        "Incorrect amount of indices"
+                    ));
+                }
+
+                let typed_exprs = exprs
+                    .to_vec()
+                    .into_iter()
+                    .skip(1)
+                    .map(|e| e.typecheck(env))
+                    .collect::<Result<Vec<Expr<Typed>>, _>>()?
+                    .into_boxed_slice();
+
+                typed_exprs
+                    .iter()
+                    .map(|e| e.expect_type(&Typed::Int))
+                    .collect::<Result<Vec<()>, _>>()?;
+
+                let element_type = *element_type.clone();
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::ArrayIndex(Box::new(arr), typed_exprs),
+                    type_data: element_type,
+                }
+            }
+
+            ExprKind::If(if_expr) => {
+                let (cond, true_branch, false_branch) = *if_expr;
+                let typed_cond = cond.typecheck(env)?;
+                let typed_true_branch = true_branch.typecheck(env)?;
+                let typed_false_branch = false_branch.typecheck(env)?;
+                typed_cond.expect_type(&Typed::Bool)?;
+                let branch_type = &typed_true_branch.type_data.clone();
+
+                typed_false_branch.expect_type(branch_type)?;
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::If(Box::new((
+                        typed_cond,
+                        typed_true_branch,
+                        typed_false_branch,
+                    ))),
+                    type_data: branch_type.clone(),
+                }
+            }
+            ExprKind::ArrayComp(items, expr) => todo!(),
+            ExprKind::Sum(items, expr) => todo!(),
+            ExprKind::And(operands) => {
+                let (lhs, rhs) = *operands;
+                let typed_lhs = lhs.typecheck(env)?;
+                let typed_rhs = rhs.typecheck(env)?;
+                typed_lhs.expect_type(&Typed::Bool)?;
+                typed_rhs.expect_type(&Typed::Bool)?;
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::And(Box::new((typed_lhs, typed_rhs))),
+                    type_data: Typed::Bool,
+                }
+            }
+            ExprKind::Or(operands) => {
+                let (lhs, rhs) = *operands;
+                let typed_lhs = lhs.typecheck(env)?;
+                let typed_rhs = rhs.typecheck(env)?;
+                typed_lhs.expect_type(&Typed::Bool)?;
+                typed_rhs.expect_type(&Typed::Bool)?;
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::Or(Box::new((typed_lhs, typed_rhs))),
+                    type_data: Typed::Bool,
+                }
+            }
+
+            //
+            ExprKind::LessThan(operands) => {
+                Self::typecheck_cmp_binop(operands, ExprKind::LessThan, self.location, env)?
+            }
+            ExprKind::GreaterThan(operands) => {
+                Self::typecheck_cmp_binop(operands, ExprKind::GreaterThan, self.location, env)?
+            }
+            ExprKind::LessThanEq(operands) => {
+                Self::typecheck_cmp_binop(operands, ExprKind::LessThanEq, self.location, env)?
+            }
+            ExprKind::GreaterThanEq(operands) => {
+                Self::typecheck_cmp_binop(operands, ExprKind::GreaterThanEq, self.location, env)?
+            }
+            ExprKind::Eq(operands) => {
+                Self::typecheck_cmp_binop(operands, ExprKind::Eq, self.location, env)?
+            }
+            ExprKind::NotEq(operands) => {
+                Self::typecheck_cmp_binop(operands, ExprKind::NotEq, self.location, env)?
+            }
+            ExprKind::Add(operands) => {
+                Self::typecheck_numerical_binop(operands, ExprKind::Add, self.location, env)?
+            }
+            ExprKind::Minus(operands) => {
+                Self::typecheck_numerical_binop(operands, ExprKind::Minus, self.location, env)?
+            }
+            ExprKind::Mulitply(operands) => {
+                Self::typecheck_numerical_binop(operands, ExprKind::Mulitply, self.location, env)?
+            }
+            ExprKind::Divide(operands) => {
+                Self::typecheck_numerical_binop(operands, ExprKind::Divide, self.location, env)?
+            }
+            ExprKind::Modulo(operands) => {
+                Self::typecheck_numerical_binop(operands, ExprKind::Modulo, self.location, env)?
+            }
+            ExprKind::Not(expr) => {
+                let typed_expr = expr.typecheck(env)?;
+                typed_expr.expect_type(&Typed::Bool)?;
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::Not(Box::new(typed_expr)),
+                    type_data: Typed::Bool,
+                }
+            }
+            ExprKind::Negation(expr) => {
+                let typed_expr = expr.typecheck(env)?;
+                typed_expr.expect_one_of_types(&[Typed::Int, Typed::Float])?;
+
+                Expr {
+                    location: self.location,
+                    kind: ExprKind::Negation(Box::new(typed_expr)),
+                    type_data: Typed::Bool,
+                }
+            }
+        })
+
+        //self.expr_type = Some(t);
+    }
+}
+impl<T: TypeState> Expr<T> {
     pub fn to_s_expresion(&self, src: &[u8]) -> String {
+        // TODO: Add type annocations
         match &self.kind {
             ExprKind::IntLit(val) => format!("(IntExpr {})", val),
             ExprKind::FloatLit(val) => format!("(FloatExpr {:.0})", val.trunc()),

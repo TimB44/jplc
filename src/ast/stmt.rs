@@ -1,5 +1,9 @@
 //! Defines the types to represent statments in JPL, and the functions to parse them
-use crate::{lex::TokenType, utils::Span};
+use crate::{
+    lex::TokenType,
+    typecheck::{TypeState, UnTyped},
+    utils::Span,
+};
 use miette::{miette, LabeledSpan, Severity};
 
 use super::{
@@ -10,20 +14,20 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Stmt<'a> {
+pub struct Stmt<T: TypeState = UnTyped> {
     // TODO rename once used
     _location: Span,
-    kind: StmtType<'a>,
+    kind: StmtType<T>,
 }
 
 #[derive(Debug, Clone)]
-pub enum StmtType<'a> {
-    Let(LValue, Expr<'a>),
-    Assert(Expr<'a>, Str),
-    Return(Expr<'a>),
+pub enum StmtType<T: TypeState> {
+    Let(LValue, Expr<T>),
+    Assert(Expr<T>, Str),
+    Return(Expr<T>),
 }
 
-impl<'a> Parse<Stmt<'a>> for Stmt<'a> {
+impl Parse<Stmt> for Stmt {
     /// Current grammar
     /// stmt : let <lvalue> = <expr>
     ///      | assert <expr> , <string>
@@ -54,7 +58,7 @@ impl<'a> Parse<Stmt<'a>> for Stmt<'a> {
     }
 }
 
-impl<'a> Stmt<'a> {
+impl Stmt {
     fn parse_let(ts: &mut TokenStream) -> miette::Result<Self> {
         let [let_token] = expect_tokens(ts, [TokenType::Let])?;
         let l_value = LValue::parse(ts)?;
