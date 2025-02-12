@@ -94,35 +94,29 @@ impl Stmt {
         })
     }
 
-    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+    pub fn to_s_expr(&self, src: &[u8]) -> String {
         match &self.kind {
             StmtType::Let(lvalue, expr) => format!(
                 "(LetStmt {} {})",
-                lvalue.to_s_expresion(src),
-                expr.to_s_expresion(src)
+                lvalue.to_s_expr(src),
+                expr.to_s_expr(src)
             ),
             StmtType::Assert(expr, str_lit) => format!(
                 "(AssertStmt {} {})",
-                expr.to_s_expresion(src),
+                expr.to_s_expr(src),
                 str_lit.location().as_str(src)
             ),
-            StmtType::Return(expr) => format!("(ReturnStmt {})", expr.to_s_expresion(src)),
+            StmtType::Return(expr) => format!("(ReturnStmt {})", expr.to_s_expr(src)),
         }
     }
 }
 
 impl<T: TypeState> Stmt<T> {
-    fn to_s_expresion_general(
-        &self,
-        src: &[u8],
-        expr_printer: impl Fn(&Expr<T>) -> String,
-    ) -> String {
+    fn to_s_expr_general(&self, src: &[u8], expr_printer: impl Fn(&Expr<T>) -> String) -> String {
         match &self.kind {
-            StmtType::Let(lvalue, expr) => format!(
-                "(LetStmt {} {})",
-                lvalue.to_s_expresion(src),
-                expr_printer(expr)
-            ),
+            StmtType::Let(lvalue, expr) => {
+                format!("(LetStmt {} {})", lvalue.to_s_expr(src), expr_printer(expr))
+            }
             StmtType::Assert(expr, str_lit) => format!(
                 "(AssertStmt {} {})",
                 expr_printer(expr),
@@ -134,7 +128,7 @@ impl<T: TypeState> Stmt<T> {
 }
 
 impl Stmt<Typed> {
-    pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
-        self.to_s_expresion_general(env.src(), |expr| expr.to_typed_s_exprsision(env))
+    pub fn to_typed_s_expr(&self, env: &Environment) -> String {
+        self.to_s_expr_general(env.src(), |expr| expr.to_typed_s_exprsision(env))
     }
 }

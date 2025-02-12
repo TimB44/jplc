@@ -92,7 +92,7 @@ pub struct Expr<T: TypeState = UnTyped> {
 ///```
 #[derive(Debug, Clone)]
 pub enum ExprKind<T: TypeState = UnTyped> {
-    // Simple expresions
+    // Simple expressions
     IntLit(u64),
     FloatLit(f64),
     True,
@@ -337,7 +337,7 @@ impl Expr {
             (Some(t), _) => Err(miette!(
                 severity = Severity::Error,
                 labels = vec![LabeledSpan::new(
-                    Some(format!("expected expresion, found: {}", t)),
+                    Some(format!("expected expression, found: {}", t)),
                     ts.peek().unwrap().span().start(),
                     ts.peek().unwrap().bytes().len(),
                 )],
@@ -505,7 +505,7 @@ impl Expr {
 
 impl Expr<Typed> {
     pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
-        let mut normal = self.to_s_expresion(env.src());
+        let mut normal = self.to_s_expr(env.src());
         let index_for_type = normal
             .find(|c| c == ' ' || c == ')')
             .expect("invalid s-expr found")
@@ -894,7 +894,7 @@ impl Expr {
 }
 
 impl<T: TypeState> Expr<T> {
-    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+    pub fn to_s_expr(&self, src: &[u8]) -> String {
         match &self.kind {
             ExprKind::IntLit(val) => format!("(IntExpr {})", val),
             ExprKind::FloatLit(val) => format!("(FloatExpr {:.0})", val.trunc()),
@@ -906,7 +906,7 @@ impl<T: TypeState> Expr<T> {
                 let mut s_expr = "(ArrayLiteralExpr".to_string();
                 for item in items {
                     s_expr.push(' ');
-                    s_expr.push_str(&item.to_s_expresion(src));
+                    s_expr.push_str(&item.to_s_expr(src));
                 }
                 s_expr.push(')');
                 s_expr
@@ -916,7 +916,7 @@ impl<T: TypeState> Expr<T> {
 
                 for expr in fields {
                     s_expr.push(' ');
-                    s_expr.push_str(&expr.to_s_expresion(src));
+                    s_expr.push_str(&expr.to_s_expr(src));
                 }
 
                 s_expr.push(')');
@@ -927,30 +927,28 @@ impl<T: TypeState> Expr<T> {
                 let mut s_expr = format!("(CallExpr {}", span.as_str(src));
                 for arg in args {
                     s_expr.push(' ');
-                    s_expr.push_str(&arg.to_s_expresion(src));
+                    s_expr.push_str(&arg.to_s_expr(src));
                 }
                 s_expr.push(')');
                 s_expr
             }
-            ExprKind::FieldAccess(expr, span) => format!(
-                "(DotExpr {} {})",
-                expr.to_s_expresion(src),
-                span.as_str(src)
-            ),
+            ExprKind::FieldAccess(expr, span) => {
+                format!("(DotExpr {} {})", expr.to_s_expr(src), span.as_str(src))
+            }
             ExprKind::ArrayIndex(expr, indices) => {
-                let mut s_expr = format!("(ArrayIndexExpr {}", expr.to_s_expresion(src));
+                let mut s_expr = format!("(ArrayIndexExpr {}", expr.to_s_expr(src));
                 for index in indices {
                     s_expr.push(' ');
-                    s_expr.push_str(&index.to_s_expresion(src));
+                    s_expr.push_str(&index.to_s_expr(src));
                 }
                 s_expr.push(')');
                 s_expr
             }
             ExprKind::If(if_stmt) => format!(
                 "(IfExpr {} {} {})",
-                if_stmt.0.to_s_expresion(src),
-                if_stmt.1.to_s_expresion(src),
-                if_stmt.2.to_s_expresion(src)
+                if_stmt.0.to_s_expr(src),
+                if_stmt.1.to_s_expr(src),
+                if_stmt.2.to_s_expr(src)
             ),
             ExprKind::ArrayComp(args, expr) => {
                 let mut s_expr = "(ArrayLoopExpr ".to_string();
@@ -958,10 +956,10 @@ impl<T: TypeState> Expr<T> {
                     s_expr.push_str(var.as_str(src));
                     s_expr.push(' ');
 
-                    s_expr.push_str(&expr.to_s_expresion(src));
+                    s_expr.push_str(&expr.to_s_expr(src));
                     s_expr.push(' ');
                 }
-                s_expr.push_str(&expr.to_s_expresion(src));
+                s_expr.push_str(&expr.to_s_expr(src));
                 s_expr.push(')');
                 s_expr
             }
@@ -971,81 +969,81 @@ impl<T: TypeState> Expr<T> {
                     s_expr.push_str(var.as_str(src));
                     s_expr.push(' ');
 
-                    s_expr.push_str(&expr.to_s_expresion(src));
+                    s_expr.push_str(&expr.to_s_expr(src));
                     s_expr.push(' ');
                 }
-                s_expr.push_str(&expr.to_s_expresion(src));
+                s_expr.push_str(&expr.to_s_expr(src));
                 s_expr.push(')');
                 s_expr
             }
             ExprKind::And(operands) => format!(
                 "(BinopExpr {} && {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::Or(operands) => format!(
                 "(BinopExpr {} || {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::LessThan(operands) => format!(
                 "(BinopExpr {} < {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::GreaterThan(operands) => format!(
                 "(BinopExpr {} > {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::LessThanEq(operands) => format!(
                 "(BinopExpr {} <= {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::GreaterThanEq(operands) => format!(
                 "(BinopExpr {} >= {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::Eq(operands) => format!(
                 "(BinopExpr {} == {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::NotEq(operands) => format!(
                 "(BinopExpr {} != {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::Add(operands) => format!(
                 "(BinopExpr {} + {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::Minus(operands) => format!(
                 "(BinopExpr {} - {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::Mulitply(operands) => format!(
                 "(BinopExpr {} * {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::Divide(operands) => format!(
                 "(BinopExpr {} / {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
             ExprKind::Modulo(operands) => format!(
                 "(BinopExpr {} % {})",
-                operands.0.to_s_expresion(src),
-                operands.1.to_s_expresion(src)
+                operands.0.to_s_expr(src),
+                operands.1.to_s_expr(src)
             ),
-            ExprKind::Not(expr) => format!("(UnopExpr ! {})", expr.to_s_expresion(src)),
-            ExprKind::Negation(expr) => format!("(UnopExpr - {})", expr.to_s_expresion(src)),
-            ExprKind::Paren(expr) => expr.to_s_expresion(src),
+            ExprKind::Not(expr) => format!("(UnopExpr ! {})", expr.to_s_expr(src)),
+            ExprKind::Negation(expr) => format!("(UnopExpr - {})", expr.to_s_expr(src)),
+            ExprKind::Paren(expr) => expr.to_s_expr(src),
         }
     }
 }

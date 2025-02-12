@@ -229,12 +229,8 @@ impl Cmd {
         })
     }
 
-    pub fn to_s_expresion(&self, src: &[u8]) -> String {
-        self.to_s_expresion_general(
-            src,
-            |expr| expr.to_s_expresion(src),
-            |stmt| stmt.to_s_expresion(src),
-        )
+    pub fn to_s_expr(&self, src: &[u8]) -> String {
+        self.to_s_expr_general(src, |expr| expr.to_s_expr(src), |stmt| stmt.to_s_expr(src))
     }
 
     pub fn typecheck(self, env: &mut Environment) -> miette::Result<Cmd<Typed>> {
@@ -273,16 +269,16 @@ impl Cmd {
 
 impl Cmd<Typed> {
     pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
-        self.to_s_expresion_general(
+        self.to_s_expr_general(
             env.src(),
             |expr| expr.to_typed_s_exprsision(env),
-            |stmt| stmt.to_typed_s_exprsision(env),
+            |stmt| stmt.to_typed_s_expr(env),
         )
     }
 }
 
 impl<T: TypeState> Cmd<T> {
-    fn to_s_expresion_general(
+    fn to_s_expr_general(
         &self,
         src: &[u8],
         expr_printer: impl Fn(&Expr<T>) -> String,
@@ -293,7 +289,7 @@ impl<T: TypeState> Cmd<T> {
                 format!(
                     "(ReadCmd {} {})",
                     str.location().as_str(src),
-                    lvalue.to_s_expresion(src)
+                    lvalue.to_s_expr(src)
                 )
             }
             CmdKind::WriteImage(expr, str) => {
@@ -303,11 +299,9 @@ impl<T: TypeState> Cmd<T> {
                     str.location().as_str(src)
                 )
             }
-            CmdKind::Let(lvalue, expr) => format!(
-                "(LetCmd {} {})",
-                lvalue.to_s_expresion(src),
-                expr_printer(expr)
-            ),
+            CmdKind::Let(lvalue, expr) => {
+                format!("(LetCmd {} {})", lvalue.to_s_expr(src), expr_printer(expr))
+            }
             CmdKind::Assert(expr, str) => {
                 format!(
                     "(AssertCmd {} {})",
@@ -319,7 +313,7 @@ impl<T: TypeState> Cmd<T> {
             CmdKind::Show(expr) => format!("(ShowCmd {})", expr_printer(expr)),
             CmdKind::Time(cmd) => format!(
                 "(TimeCmd {})",
-                cmd.to_s_expresion_general(src, expr_printer, stmt_printer)
+                cmd.to_s_expr_general(src, expr_printer, stmt_printer)
             ),
             CmdKind::Function {
                 name,
@@ -331,14 +325,14 @@ impl<T: TypeState> Cmd<T> {
                 let mut params_iter = params.iter();
                 let last = params_iter.next_back();
                 for param in params_iter {
-                    s_expr.push_str(&param.to_s_expresion(src));
+                    s_expr.push_str(&param.to_s_expr(src));
                     s_expr.push(' ');
                 }
                 if let Some(last) = last {
-                    s_expr.push_str(&last.to_s_expresion(src));
+                    s_expr.push_str(&last.to_s_expr(src));
                 }
                 s_expr.push_str(")) ");
-                s_expr.push_str(&return_type.to_s_expresion(src));
+                s_expr.push_str(&return_type.to_s_expr(src));
                 for stmt in body {
                     s_expr.push(' ');
                     s_expr.push_str(&stmt_printer(stmt));
@@ -355,7 +349,7 @@ impl<T: TypeState> Cmd<T> {
                     s_expr.push(' ');
                     s_expr.push_str(name.as_str(src));
                     s_expr.push(' ');
-                    s_expr.push_str(&field_type.to_s_expresion(src));
+                    s_expr.push_str(&field_type.to_s_expr(src));
                 }
                 s_expr.push(')');
                 s_expr

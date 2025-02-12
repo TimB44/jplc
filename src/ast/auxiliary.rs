@@ -44,7 +44,7 @@ pub struct LValue {
 }
 
 impl LValue {
-    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+    pub fn to_s_expr(&self, src: &[u8]) -> String {
         match &self.array_bindings {
             //(FnCmd x (((ArrayLValue y H) (IntType))) (VoidType))
             Some(array_bindings) => {
@@ -105,11 +105,11 @@ impl Parse<Binding> for Binding {
     }
 }
 impl Binding {
-    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+    pub fn to_s_expr(&self, src: &[u8]) -> String {
         format!(
             "{} {}",
-            self.l_value.to_s_expresion(src),
-            self.variable_type.to_s_expresion(src)
+            self.l_value.to_s_expr(src),
+            self.variable_type.to_s_expr(src)
         )
     }
 }

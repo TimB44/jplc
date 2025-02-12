@@ -43,7 +43,7 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
 
     if mode.parse {
         for cmd in program.commands() {
-            println!("{}", cmd.to_s_expresion(source.as_bytes()))
+            println!("{}", cmd.to_s_expr(source.as_bytes()))
         }
 
         println!(

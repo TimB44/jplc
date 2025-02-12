@@ -47,7 +47,7 @@ impl Parse<Type> for Type {
                 return Err(miette!(
                     severity = Severity::Error,
                     labels = vec![LabeledSpan::new(
-                        Some(format!("expected expresion, found: {}", t)),
+                        Some(format!("expected Expression, found: {}", t)),
                         ts.peek().unwrap().span().start(),
                         ts.peek().unwrap().bytes().len(),
                     )],
@@ -127,7 +127,7 @@ impl Type {
         self.location
     }
 
-    pub fn to_s_expresion(&self, src: &[u8]) -> String {
+    pub fn to_s_expr(&self, src: &[u8]) -> String {
         match &self.kind {
             TypeKind::Int => "(IntType)".to_string(),
             TypeKind::Bool => "(BoolType)".to_string(),
@@ -135,7 +135,7 @@ impl Type {
             TypeKind::Struct => format!("(StructType {})", self.location.as_str(src)),
             TypeKind::Void => "(VoidType)".to_string(),
             TypeKind::Array(expr, rank) => {
-                format!("(ArrayType {} {})", expr.to_s_expresion(src), rank)
+                format!("(ArrayType {} {})", expr.to_s_expr(src), rank)
             }
         }
     }
