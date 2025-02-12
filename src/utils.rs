@@ -106,6 +106,16 @@ mod span_tests {
     }
 
     #[test]
+    fn test_join_disjoint() {
+        let span1 = Span::new(1, 1); // [1, 2)
+        let span2 = Span::new(5, 1); // [5, 6)
+        let joined = span1.join(&span2);
+        assert_eq!(joined.start(), 1);
+        assert_eq!(joined.len(), 5);
+        assert_eq!(joined.end(), 6);
+    }
+
+    #[test]
     fn test_start() {
         let span = Span::new(10, 5);
         assert_eq!(span.start(), 10);

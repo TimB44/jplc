@@ -26,6 +26,10 @@ impl<'a> StructInfo<'a> {
     pub fn id(&self) -> usize {
         self.id
     }
+
+    pub fn name(&self) -> &str {
+        self.name
+    }
 }
 
 impl<'a> Environment<'a> {
