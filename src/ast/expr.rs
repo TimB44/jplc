@@ -1105,7 +1105,7 @@ impl<T: TypeState> Expr<T> {
             ),
             ExprKind::Not(expr) => format!("(UnopExpr ! {})", expr_printer(expr)),
             ExprKind::Negation(expr) => format!("(UnopExpr - {})", expr_printer(expr)),
-            ExprKind::Paren(expr) => expr_printer(expr),
+            ExprKind::Paren(expr) => expr.to_s_expr_general(src, Some(expr_printer)),
         }
     }
 }
