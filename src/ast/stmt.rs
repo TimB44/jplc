@@ -1,7 +1,7 @@
 //! Defines the types to represent statments in JPL, and the functions to parse them
 use crate::{
     lex::TokenType,
-    typecheck::{TypeState, UnTyped},
+    typecheck::{self, Environment, TypeState, Typed, UnTyped},
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};
@@ -21,7 +21,7 @@ pub struct Stmt<T: TypeState = UnTyped> {
 }
 
 #[derive(Debug, Clone)]
-pub enum StmtType<T: TypeState> {
+pub enum StmtType<T: TypeState = UnTyped> {
     Let(LValue, Expr<T>),
     Assert(Expr<T>, Str),
     Return(Expr<T>),
@@ -108,5 +108,33 @@ impl Stmt {
             ),
             StmtType::Return(expr) => format!("(ReturnStmt {})", expr.to_s_expresion(src)),
         }
+    }
+}
+
+impl<T: TypeState> Stmt<T> {
+    fn to_s_expresion_general(
+        &self,
+        src: &[u8],
+        expr_printer: impl Fn(&Expr<T>) -> String,
+    ) -> String {
+        match &self.kind {
+            StmtType::Let(lvalue, expr) => format!(
+                "(LetStmt {} {})",
+                lvalue.to_s_expresion(src),
+                expr_printer(expr)
+            ),
+            StmtType::Assert(expr, str_lit) => format!(
+                "(AssertStmt {} {})",
+                expr_printer(expr),
+                str_lit.location().as_str(src)
+            ),
+            StmtType::Return(expr) => format!("(ReturnStmt {})", expr_printer(expr)),
+        }
+    }
+}
+
+impl Stmt<Typed> {
+    pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
+        self.to_s_expresion_general(env.src(), |expr| expr.to_typed_s_exprsision(env))
     }
 }

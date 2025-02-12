@@ -1,4 +1,4 @@
-use std::{process::exit, time::Instant};
+use std::time::Instant;
 
 use ast::Program;
 use cli::Mode;
@@ -33,7 +33,7 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
             "Compilation succeeded: lexical analysis complete in {}ms",
             Instant::now().duration_since(start_time).as_millis()
         );
-        exit(0);
+        return;
     }
 
     let program = match Program::new(token_stream) {
@@ -50,13 +50,26 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
             "Compilation succeeded: parsing complete in {}ms",
             Instant::now().duration_since(start_time).as_millis()
         );
-        exit(0);
+        return;
     }
 
-    //let mut env = Environment::new(source.as_bytes());
-    //program
-    //    .check(&mut env)
-    //    .unwrap_or_else(|err| exit_with_error(err));
-    //
+    let mut env = Environment::new(source.as_bytes());
+    let typed_program = match program.typecheck(&mut env) {
+        Ok(p) => p,
+        Err(err) => exit_with_error(err.with_source_code(NamedSource::new(source_name, source))),
+    };
+
+    if mode.typecheck {
+        for cmd in typed_program.commands() {
+            println!("{}", cmd.to_typed_s_exprsision(&env))
+        }
+
+        println!(
+            "Compilation succeeded: parsing complete in {}ms",
+            Instant::now().duration_since(start_time).as_millis()
+        );
+        return;
+    }
+
     unreachable!()
 }

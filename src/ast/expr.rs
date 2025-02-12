@@ -504,6 +504,20 @@ impl Expr {
 }
 
 impl Expr<Typed> {
+    pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
+        let mut normal = self.to_s_expresion(env.src());
+        let index_for_type = normal
+            .find(|c| c == ' ' || c == ')')
+            .expect("invalid s-expr found")
+            + 1;
+
+        normal.insert_str(
+            index_for_type,
+            &format!(" ({}) ", self.type_data.to_typed_s_exprsision(env)),
+        );
+
+        normal
+    }
     fn expect_type<'a>(&self, expected: &Typed, env: &Environment) -> miette::Result<()> {
         if &self.type_data == expected {
             return Ok(());
@@ -878,9 +892,9 @@ impl Expr {
         })
     }
 }
+
 impl<T: TypeState> Expr<T> {
     pub fn to_s_expresion(&self, src: &[u8]) -> String {
-        // TODO: Add type annocations
         match &self.kind {
             ExprKind::IntLit(val) => format!("(IntExpr {})", val),
             ExprKind::FloatLit(val) => format!("(FloatExpr {:.0})", val.trunc()),

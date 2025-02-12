@@ -1,6 +1,7 @@
 use crate::{
     lex::{Lexer, TokenType},
     parse::{expect_tokens, next_match, parse_sequence_trailing, TokenStream},
+    typecheck::{Environment, TypeState, Typed, UnTyped},
 };
 
 use super::parse::Parse;
@@ -16,8 +17,8 @@ pub mod types;
 ///
 /// This is the top-level item responsible for parsing all other components.
 #[derive(Debug, Clone)]
-pub struct Program {
-    commands: Box<[Cmd]>,
+pub struct Program<T: TypeState = UnTyped> {
+    commands: Box<[Cmd<T>]>,
 }
 
 impl<'a> Parse<Program> for Program {
@@ -42,8 +43,22 @@ impl Program {
         Self::parse(&mut TokenStream::new(lexer))
     }
 
+    pub fn typecheck(self, env: &mut Environment) -> miette::Result<Program<Typed>> {
+        Ok(Program {
+            commands: self
+                .commands()
+                .to_vec()
+                .into_iter()
+                .map(|e| e.typecheck(env))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_boxed_slice(),
+        })
+    }
+}
+
+impl<T: TypeState> Program<T> {
     /// Returns the commands in the program.
-    pub fn commands(&self) -> &[Cmd] {
+    pub fn commands(&self) -> &[Cmd<T>] {
         &self.commands
     }
 }

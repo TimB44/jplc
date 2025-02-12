@@ -10,7 +10,7 @@ use super::{
     Parse, TokenStream,
 };
 
-use crate::typecheck::{Environment, TypeState, UnTyped};
+use crate::typecheck::{Environment, TypeState, Typed, UnTyped};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
@@ -31,7 +31,7 @@ pub enum CmdKind<T: TypeState = UnTyped> {
     Let(LValue, Expr<T>),
     Assert(Expr<T>, Str),
     Print(Str),
-    Show(Expr),
+    Show(Expr<T>),
     Time(Box<Cmd<T>>),
     Function {
         name: Span,
@@ -93,31 +93,6 @@ impl Parse<Cmd> for Cmd {
         }
     }
 }
-
-//impl Typecheck for Cmd {
-//    fn check(&mut self, env: &mut Environment) -> miette::Result<()> {
-//        match &mut self.kind {
-//            CmdKind::ReadImage(_, lvalue) => todo!(),
-//            CmdKind::WriteImage(expr, _) => todo!(),
-//            CmdKind::Let(lvalue, expr) => todo!(),
-//            CmdKind::Assert(expr, _) => todo!(),
-//            CmdKind::Print(_) => todo!(),
-//            CmdKind::Show(expr) => expr.check(env),
-//            CmdKind::Time(cmd) => todo!(),
-//            CmdKind::Function {
-//                name,
-//                params,
-//                return_type,
-//                body,
-//            } => todo!(),
-//            CmdKind::Struct { name, fields } => {
-//                //let struct_name = name.as_str(src);
-//
-//                todo!()
-//            }
-//        }
-//    }
-//}
 
 impl Parse<(Span, Type)> for (Span, Type) {
     /// Parses <variable>: <type>
@@ -255,6 +230,64 @@ impl Cmd {
     }
 
     pub fn to_s_expresion(&self, src: &[u8]) -> String {
+        self.to_s_expresion_general(
+            src,
+            |expr| expr.to_s_expresion(src),
+            |stmt| stmt.to_s_expresion(src),
+        )
+    }
+
+    pub fn typecheck(self, env: &mut Environment) -> miette::Result<Cmd<Typed>> {
+        match self.kind {
+            CmdKind::ReadImage(_, lvalue) => todo!(),
+            CmdKind::WriteImage(expr, _) => todo!(),
+            CmdKind::Let(lvalue, expr) => todo!(),
+            CmdKind::Assert(expr, _) => todo!(),
+            CmdKind::Print(_) => todo!(),
+            CmdKind::Show(expr) => {
+                let typed_expr = expr.typecheck(env)?;
+
+                Ok(Cmd {
+                    kind: CmdKind::Show(typed_expr),
+                    location: self.location,
+                })
+            }
+            CmdKind::Time(cmd) => todo!(),
+            CmdKind::Function {
+                name,
+                params,
+                return_type,
+                body,
+            } => todo!(),
+            CmdKind::Struct { name, fields } => {
+                env.add_struct(name, &*fields)?;
+
+                Ok(Cmd {
+                    kind: CmdKind::Struct { name, fields },
+                    location: self.location,
+                })
+            }
+        }
+    }
+}
+
+impl Cmd<Typed> {
+    pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
+        self.to_s_expresion_general(
+            env.src(),
+            |expr| expr.to_typed_s_exprsision(env),
+            |stmt| stmt.to_typed_s_exprsision(env),
+        )
+    }
+}
+
+impl<T: TypeState> Cmd<T> {
+    fn to_s_expresion_general(
+        &self,
+        src: &[u8],
+        expr_printer: impl Fn(&Expr<T>) -> String,
+        stmt_printer: impl Fn(&Stmt<T>) -> String,
+    ) -> String {
         match &self.kind {
             CmdKind::ReadImage(str, lvalue) => {
                 format!(
@@ -266,25 +299,28 @@ impl Cmd {
             CmdKind::WriteImage(expr, str) => {
                 format!(
                     "(WriteCmd {} {})",
-                    expr.to_s_expresion(src),
+                    expr_printer(expr),
                     str.location().as_str(src)
                 )
             }
             CmdKind::Let(lvalue, expr) => format!(
                 "(LetCmd {} {})",
                 lvalue.to_s_expresion(src),
-                expr.to_s_expresion(src)
+                expr_printer(expr)
             ),
             CmdKind::Assert(expr, str) => {
                 format!(
                     "(AssertCmd {} {})",
-                    expr.to_s_expresion(src),
+                    expr_printer(&expr),
                     str.location().as_str(src)
                 )
             }
             CmdKind::Print(str) => format!("(PrintCmd {})", str.location().as_str(src)),
-            CmdKind::Show(expr) => format!("(ShowCmd {})", expr.to_s_expresion(src)),
-            CmdKind::Time(cmd) => format!("(TimeCmd {})", cmd.to_s_expresion(src)),
+            CmdKind::Show(expr) => format!("(ShowCmd {})", expr_printer(expr)),
+            CmdKind::Time(cmd) => format!(
+                "(TimeCmd {})",
+                cmd.to_s_expresion_general(src, expr_printer, stmt_printer)
+            ),
             CmdKind::Function {
                 name,
                 params,
@@ -305,13 +341,13 @@ impl Cmd {
                 s_expr.push_str(&return_type.to_s_expresion(src));
                 for stmt in body {
                     s_expr.push(' ');
-                    s_expr.push_str(&stmt.to_s_expresion(src));
+                    s_expr.push_str(&stmt_printer(stmt));
                 }
                 s_expr.push(')');
 
                 s_expr
             }
-            //(StructCmd x f (IntType) f (IntType))
+
             CmdKind::Struct { name, fields } => {
                 let mut s_expr = format!("(StructCmd {}", name.as_str(src));
 

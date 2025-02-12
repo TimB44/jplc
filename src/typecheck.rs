@@ -15,6 +15,7 @@ pub struct Environment<'a> {
 pub struct StructInfo<'a> {
     fields: Box<[(&'a str, Typed)]>,
     id: usize,
+    name: &'a str,
 }
 
 impl<'a> StructInfo<'a> {
@@ -39,6 +40,7 @@ impl<'a> Environment<'a> {
             ]
             .into_boxed_slice(),
             id: 0,
+            name: "rgba",
         }];
 
         Self {
@@ -105,6 +107,7 @@ impl<'a> Environment<'a> {
         self.struct_info.push(StructInfo {
             fields: fields.into_boxed_slice(),
             id,
+            name: name_str,
         });
 
         Ok(())
@@ -131,17 +134,13 @@ impl<'a> Environment<'a> {
         Ok(&self.struct_info[id])
     }
 
-    //pub fn get_struct_info(&self, id: usize) -> &StructInfo {
-    //    &self.struct_info[id]
-    //}
+    pub fn get_struct_id(&self, id: usize) -> &StructInfo {
+        &self.struct_info[id]
+    }
 
     pub fn src(&self) -> &[u8] {
         self.src
     }
-}
-
-pub trait GetType {
-    fn get_type(&self, env: &Environment) -> miette::Result<Typed>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,16 +177,21 @@ impl Typed {
                     ",".repeat((*rank as usize) - 1)
                 )
             }
-            // TODO: not ideal
-            Typed::Struct(id) => env
-                .struct_ids
-                .iter()
-                .filter(|(_, v)| *v == id)
-                .next()
-                .unwrap()
-                .0
-                .to_string(),
+            Typed::Struct(id) => env.struct_info[*id].name.to_string(),
             Typed::Void => "void".to_string(),
+        }
+    }
+
+    pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
+        match self {
+            Typed::Int => "IntType".to_string(),
+            Typed::Bool => "BoolType".to_string(),
+            Typed::Float => "FloatType".to_string(),
+            Typed::Array(typed, rank) => {
+                format!("ArrayType ({}) {}", typed.to_typed_s_exprsision(env), rank)
+            }
+            Typed::Struct(id) => format!("StructType {}", env.get_struct_id(*id).name),
+            Typed::Void => todo!(),
         }
     }
 }
