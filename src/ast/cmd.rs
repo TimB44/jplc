@@ -10,7 +10,8 @@ use super::{
     Parse, TokenStream,
 };
 
-use crate::typecheck::{Environment, TypeState, Typed, UnTyped};
+use crate::environment::Environment;
+use crate::typecheck::{TypeState, Typed, UnTyped};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
@@ -38,6 +39,7 @@ pub enum CmdKind<T: TypeState = UnTyped> {
         params: Box<[Binding]>,
         return_type: Type,
         body: Box<[Stmt<T>]>,
+        scope: usize,
     },
     Struct {
         name: Span,
@@ -206,6 +208,7 @@ impl Cmd {
                 params,
                 return_type,
                 body,
+                scope: 0,
             },
             location,
         })
@@ -254,6 +257,7 @@ impl Cmd {
                 params,
                 return_type,
                 body,
+                scope,
             } => todo!(),
             CmdKind::Struct { name, fields } => {
                 env.add_struct(name, &*fields)?;
@@ -320,6 +324,7 @@ impl<T: TypeState> Cmd<T> {
                 params,
                 return_type,
                 body,
+                ..
             } => {
                 let mut s_expr = format!("(FnCmd {} ((", name.as_str(src));
                 let mut params_iter = params.iter();

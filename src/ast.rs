@@ -1,7 +1,8 @@
 use crate::{
+    environment::Environment,
     lex::{Lexer, TokenType},
     parse::{expect_tokens, next_match, parse_sequence_trailing, TokenStream},
-    typecheck::{Environment, TypeState, Typed, UnTyped},
+    typecheck::{TypeState, Typed, UnTyped},
 };
 
 use super::parse::Parse;

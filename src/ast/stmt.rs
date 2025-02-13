@@ -1,7 +1,8 @@
 //! Defines the types to represent statments in JPL, and the functions to parse them
 use crate::{
+    environment::Environment,
     lex::TokenType,
-    typecheck::{self, Environment, TypeState, Typed, UnTyped},
+    typecheck::{TypeState, Typed, UnTyped},
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};

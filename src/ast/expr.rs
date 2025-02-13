@@ -1,8 +1,9 @@
 //! Defines the types of functions to parse all kinds of expressions in JPL
 use super::{super::parse::parse_sequence, expect_tokens, Parse, TokenStream};
 use crate::{
+    environment::Environment,
     lex::TokenType,
-    typecheck::{Environment, TypeState, Typed, UnTyped},
+    typecheck::{TypeState, Typed, UnTyped},
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};
@@ -109,8 +110,10 @@ pub enum ExprKind<T: TypeState = UnTyped> {
 
     // Lowest Precedence
     If(Box<(Expr<T>, Expr<T>, Expr<T>)>),
-    ArrayComp(Box<[(Span, Expr<T>)]>, Box<Expr<T>>),
-    Sum(Box<[(Span, Expr<T>)]>, Box<Expr<T>>),
+
+    // Number represents their scope
+    ArrayComp(Box<[(Span, Expr<T>)]>, Box<Expr<T>>, usize),
+    Sum(Box<[(Span, Expr<T>)]>, Box<Expr<T>>, usize),
 
     // Bool ops
     And(Box<(Expr<T>, Expr<T>)>),
@@ -231,7 +234,7 @@ impl Expr {
 
         Ok(Self {
             location,
-            kind: ExprKind::ArrayComp(params, Box::new(expr)),
+            kind: ExprKind::ArrayComp(params, Box::new(expr), 0),
             type_data: UnTyped {},
         })
     }
@@ -244,7 +247,7 @@ impl Expr {
 
         Ok(Self {
             location,
-            kind: ExprKind::Sum(params, Box::new(expr)),
+            kind: ExprKind::Sum(params, Box::new(expr), 0),
 
             type_data: UnTyped {},
         })
@@ -853,8 +856,8 @@ impl Expr {
                     type_data: branch_type.clone(),
                 }
             }
-            ExprKind::ArrayComp(items, expr) => todo!(),
-            ExprKind::Sum(items, expr) => todo!(),
+            ExprKind::ArrayComp(items, expr, scope) => todo!(),
+            ExprKind::Sum(items, expr, scope) => todo!(),
             ExprKind::And(operands) => {
                 let (lhs, rhs) = *operands;
                 let typed_lhs = lhs.typecheck(env)?;
@@ -1012,7 +1015,7 @@ impl<T: TypeState> Expr<T> {
                 expr_printer(&if_stmt.1),
                 expr_printer(&if_stmt.2)
             ),
-            ExprKind::ArrayComp(args, expr) => {
+            ExprKind::ArrayComp(args, expr, _) => {
                 let mut s_expr = "(ArrayLoopExpr ".to_string();
                 for (var, expr) in args {
                     s_expr.push_str(var.as_str(src));
@@ -1025,7 +1028,7 @@ impl<T: TypeState> Expr<T> {
                 s_expr.push(')');
                 s_expr
             }
-            ExprKind::Sum(args, expr) => {
+            ExprKind::Sum(args, expr, _) => {
                 let mut s_expr = "(SumLoopExpr ".to_string();
                 for (var, expr) in args {
                     s_expr.push_str(var.as_str(src));

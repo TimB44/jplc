@@ -1,4 +1,0 @@
-(ShowCmd (ArrayIndexExpr (ArrayLiteralExpr (IntExpr 1) (IntExpr 2)) (IntExpr 0)))
-Compilation succeeded: parsing complete in 2ms
-(ShowCmd (ArrayIndexExpr (IntType) (ArrayLiteralExpr (ArrayType (IntType) 1) (IntExpr (IntType) 1) (IntExpr (IntType) 2))))
-Compilation succeeded: parsing complete in 2ms

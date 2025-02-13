@@ -2,15 +2,16 @@ use std::time::Instant;
 
 use ast::Program;
 use cli::Mode;
+use environment::Environment;
 use lex::Lexer;
 use miette::NamedSource;
-use typecheck::Environment;
 use utils::exit_with_error;
 
 pub mod cli;
 pub mod utils;
 
 mod ast;
+mod environment;
 mod lex;
 mod parse;
 mod typecheck;
