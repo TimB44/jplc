@@ -1,9 +1,16 @@
+use crate::{
+    ast::{
+        auxiliary::{Binding, LValue},
+        types::Type,
+    },
+    typecheck::Typed,
+    utils::Span,
+};
+use builtins::{builtin_fns, builtin_structs, builtin_vars};
+use miette::{miette, Context, LabeledSpan, Severity};
 use std::collections::{hash_map::Entry, HashMap};
-mod builtins;
 
-use miette::{miette, LabeledSpan, Severity};
-
-use crate::{ast::types::Type, typecheck::Typed, utils::Span};
+pub mod builtins;
 
 pub struct Environment<'a> {
     src: &'a [u8],
@@ -15,23 +22,52 @@ pub struct Environment<'a> {
     scopes: Vec<Scope<'a>>,
 }
 
+pub const GLOBAL_SCOPE_ID: usize = 0;
+
+#[derive(Debug, Clone)]
 pub struct StructInfo<'a> {
     fields: Box<[(&'a str, Typed)]>,
     id: usize,
     name: &'a str,
 }
+
+#[derive(Debug, Clone)]
 pub struct FunctionInfo<'a> {
     args: Box<[Typed]>,
     ret: Typed,
     name: &'a str,
+    scope: usize,
 }
 
+impl<'a> FunctionInfo<'a> {
+    pub fn args(&self) -> &[Typed] {
+        &self.args
+    }
+
+    pub fn ret(&self) -> &Typed {
+        &self.ret
+    }
+
+    pub fn name(&self) -> &str {
+        self.name
+    }
+}
+
+/// Represents a all the variables in a scope in JPL.
+#[derive(Debug, Clone)]
 pub struct Scope<'a> {
-    names: HashMap<&'a str, Option<Typed>>,
+    names: HashMap<&'a str, VarInfo<'a>>,
 
     /// The index of its parent scope in the vec of scopes. 0 is always the index of the global
     /// scope. The parent of the global scope will be itself
     parent: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct VarInfo<'a> {
+    var_type: Typed,
+    // TODO: update once used
+    _bindings: Box<[&'a str]>,
 }
 
 impl<'a> StructInfo<'a> {
@@ -50,29 +86,15 @@ impl<'a> StructInfo<'a> {
 
 impl<'a> Environment<'a> {
     pub fn new(src: &'a [u8]) -> Self {
-        let struct_ids = HashMap::from([("rgba", 0)]);
-        let struct_fields = vec![StructInfo {
-            fields: vec![
-                ("r", Typed::Float),
-                ("g", Typed::Float),
-                ("b", Typed::Float),
-                ("a", Typed::Float),
-            ]
-            .into_boxed_slice(),
-            id: 0,
-            name: "rgba",
-        }];
+        let (struct_ids, struct_info) = builtin_structs();
+        let functions = builtin_fns();
 
-        // Of one float argument, returning a float: sqrt, exp, sin, cos, tan, asin, acos, atan, and log
-        // Of two float arguments, returning a float: pow and atan2
-        // /////////////////////The to_float function, which converts an int to a float
-        // The to_int function, which converts a float to an int, with positive and negative infinity converting into the maximum and minimum integers, and NaN converting to 0.
         Self {
             struct_ids,
-            struct_info: struct_fields,
+            struct_info,
             src,
-            functions: todo!(),
-            scopes: todo!(),
+            functions,
+            scopes: vec![builtin_vars()],
         }
     }
 
@@ -170,5 +192,177 @@ impl<'a> Environment<'a> {
 
     pub fn struct_info(&self) -> &[StructInfo<'a>] {
         &self.struct_info
+    }
+
+    pub fn add_function(
+        &mut self,
+        name: Span,
+        args: &[Binding],
+        ret_type: &Type,
+    ) -> miette::Result<usize> {
+        let scope = self.new_scope(GLOBAL_SCOPE_ID);
+
+        self.check_name_free(name, scope)?;
+        let name = name.as_str(self.src);
+
+        let args = args
+            .into_iter()
+            .map(|arg| {
+                let arg_type = Typed::from_ast_type(arg.variable_type(), self)?;
+                self.add_lval(arg.l_value(), arg_type.clone(), scope)?;
+                Ok(arg_type)
+            })
+            .collect::<miette::Result<Vec<_>>>()?
+            .into_boxed_slice();
+        let ret = Typed::from_ast_type(ret_type, self)?;
+
+        self.functions.insert(
+            name,
+            FunctionInfo {
+                args,
+                ret,
+                name,
+                scope,
+            },
+        );
+        Ok(scope)
+    }
+
+    pub fn get_function(&self, name: Span) -> miette::Result<&FunctionInfo> {
+        let name_str = name.as_str(self.src);
+        self.functions.get(name_str).ok_or_else(|| {
+            miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("could not find function: {}", name_str)),
+                    name.start(),
+                    name.len()
+                )],
+                "Unkown function called"
+            )
+        })
+    }
+
+    pub fn new_scope(&mut self, parent_scope: usize) -> usize {
+        self.scopes.push(Scope {
+            names: HashMap::new(),
+            parent: parent_scope,
+        });
+
+        self.scopes.len() - 1
+    }
+
+    pub fn add_lval(
+        &mut self,
+        binding: &LValue,
+        var_type: Typed,
+        scope_id: usize,
+    ) -> miette::Result<()> {
+        self.check_name_free(binding.variable(), scope_id)?;
+
+        for arr_len_binding in binding.array_bindings() {
+            self.check_name_free(*arr_len_binding, scope_id)?;
+        }
+
+        let name_str = binding.variable().as_str(self.src);
+        self.scopes[scope_id].names.insert(
+            name_str,
+            VarInfo {
+                var_type: var_type.clone(),
+                _bindings: binding
+                    .array_bindings()
+                    .into_iter()
+                    .map(|span| span.as_str(self.src))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            },
+        );
+
+        Ok(())
+    }
+
+    fn check_name_free(&mut self, name: Span, scope_id: usize) -> miette::Result<()> {
+        let mut current_scope_id = scope_id;
+        let name_str = name.as_str(self.src);
+        let dup_found = loop {
+            let current_scope = &self.scopes[current_scope_id];
+            if current_scope.names.contains_key(name_str) {
+                break true;
+            }
+
+            if current_scope.parent == current_scope_id {
+                break false;
+            }
+
+            current_scope_id = current_scope.parent;
+        };
+
+        if dup_found
+            || self.functions.contains_key(name_str)
+            || self.struct_ids.contains_key(name_str)
+        {
+            return Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("name: {name_str} already used")),
+                    name.start(),
+                    name.len(),
+                )],
+                help = "Shaddowing is not allowed in JPL",
+                "Duplicate name found"
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn get_variable_type(&self, var: Span, scope_id: usize) -> miette::Result<&Typed> {
+        let mut current_scope_id = scope_id;
+        let name = var.as_str(self.src);
+        loop {
+            let current_scope = &self.scopes[current_scope_id];
+            if let Some(t) = current_scope.names.get(name) {
+                return Ok(&t.var_type);
+            }
+
+            if current_scope.parent == current_scope_id {
+                break;
+            }
+
+            current_scope_id = current_scope.parent;
+        }
+
+        if self.struct_ids.contains_key(name) {
+            Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("expected variable, found struct: {}", name)),
+                    var.start(),
+                    var.len(),
+                )],
+                "Invalid variable found"
+            ))
+        } else if self.functions.contains_key(name) {
+            Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("expected variable, found function: {}", name)),
+                    var.start(),
+                    var.len(),
+                )],
+                help = "Functions are not first class in JPL",
+                "Invalid variable found"
+            ))
+        } else {
+            Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("unkown variable: {}", name)),
+                    var.start(),
+                    var.len(),
+                )],
+                "Invalid variable found"
+            ))
+        }
     }
 }

@@ -47,7 +47,7 @@ impl Parse<Type> for Type {
                 return Err(miette!(
                     severity = Severity::Error,
                     labels = vec![LabeledSpan::new(
-                        Some(format!("expected Expression, found: {}", t)),
+                        Some(format!("expected Type, found: {}", t)),
                         ts.peek().unwrap().span().start(),
                         ts.peek().unwrap().bytes().len(),
                     )],
@@ -59,7 +59,7 @@ impl Parse<Type> for Type {
                     severity = Severity::Error,
                     labels = vec![LabeledSpan::at_offset(
                         ts.lexer().bytes().len() - 1,
-                        "expected expression"
+                        "expected type"
                     )],
                     "Missing expected token"
                 ))

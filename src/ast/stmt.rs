@@ -16,8 +16,7 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub struct Stmt<T: TypeState = UnTyped> {
-    // TODO rename once used
-    _location: Span,
+    location: Span,
     kind: StmtType<T>,
 }
 
@@ -68,7 +67,7 @@ impl Stmt {
         let location = expr.location().join(&let_token.span());
 
         Ok(Self {
-            _location: location,
+            location,
             kind: StmtType::Let(l_value, expr),
         })
     }
@@ -80,7 +79,7 @@ impl Stmt {
         let location = str_lit.location().join(&assert_token.span());
 
         Ok(Self {
-            _location: location,
+            location,
             kind: StmtType::Assert(expr, str_lit),
         })
     }
@@ -90,7 +89,7 @@ impl Stmt {
         let location = expr.location().join(&return_token.span());
 
         Ok(Self {
-            _location: location,
+            location,
             kind: StmtType::Return(expr),
         })
     }
@@ -110,6 +109,33 @@ impl Stmt {
             StmtType::Return(expr) => format!("(ReturnStmt {})", expr.to_s_expr(src)),
         }
     }
+
+    pub fn typecheck(self, env: &mut Environment, scope_id: usize) -> miette::Result<Stmt<Typed>> {
+        match self.kind {
+            StmtType::Let(lvalue, expr) => {
+                let typed_expr = expr.typecheck(env, scope_id)?;
+                env.add_lval(&lvalue, typed_expr.type_data().clone(), scope_id)?;
+
+                Ok(Stmt {
+                    kind: StmtType::Let(lvalue, typed_expr),
+                    location: self.location,
+                })
+            }
+            StmtType::Assert(expr, msg) => {
+                let typed_expr = expr.typecheck(env, scope_id)?;
+                typed_expr.expect_type(&Typed::Bool, env)?;
+
+                Ok(Stmt {
+                    kind: StmtType::Assert(typed_expr, msg),
+                    location: self.location,
+                })
+            }
+            StmtType::Return(expr) => Ok(Stmt {
+                location: self.location,
+                kind: StmtType::Return(expr.typecheck(env, scope_id)?),
+            }),
+        }
+    }
 }
 
 impl<T: TypeState> Stmt<T> {
@@ -125,6 +151,14 @@ impl<T: TypeState> Stmt<T> {
             ),
             StmtType::Return(expr) => format!("(ReturnStmt {})", expr_printer(expr)),
         }
+    }
+
+    pub fn kind(&self) -> &StmtType<T> {
+        &self.kind
+    }
+
+    pub fn location(&self) -> Span {
+        self.location
     }
 }
 

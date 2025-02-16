@@ -1,5 +1,6 @@
 //! Parses Commands in JPL
 use super::super::parse::parse_sequence;
+use super::stmt::StmtType;
 use super::{
     auxiliary::{Binding, LValue, Str},
     expect_tokens,
@@ -10,7 +11,8 @@ use super::{
     Parse, TokenStream,
 };
 
-use crate::environment::Environment;
+use crate::environment::builtins::IMAGE_TYPE;
+use crate::environment::{Environment, GLOBAL_SCOPE_ID};
 use crate::typecheck::{TypeState, Typed, UnTyped};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
@@ -238,27 +240,114 @@ impl Cmd {
 
     pub fn typecheck(self, env: &mut Environment) -> miette::Result<Cmd<Typed>> {
         match self.kind {
-            CmdKind::ReadImage(_, lvalue) => todo!(),
-            CmdKind::WriteImage(expr, _) => todo!(),
-            CmdKind::Let(lvalue, expr) => todo!(),
-            CmdKind::Assert(expr, _) => todo!(),
-            CmdKind::Print(_) => todo!(),
+            CmdKind::ReadImage(s, lvalue) => {
+                env.add_lval(&lvalue, IMAGE_TYPE.clone(), GLOBAL_SCOPE_ID)?;
+                Ok(Cmd {
+                    kind: CmdKind::ReadImage(s, lvalue),
+                    location: self.location,
+                })
+            }
+            CmdKind::WriteImage(expr, filename) => {
+                let typed_expr = expr.typecheck(env, GLOBAL_SCOPE_ID)?;
+                typed_expr.expect_type(&IMAGE_TYPE, env)?;
+
+                Ok(Cmd {
+                    kind: CmdKind::WriteImage(typed_expr, filename),
+                    location: self.location,
+                })
+            }
+            CmdKind::Let(lvalue, expr) => {
+                let typed_expr = expr.typecheck(env, GLOBAL_SCOPE_ID)?;
+                env.add_lval(&lvalue, typed_expr.type_data().clone(), GLOBAL_SCOPE_ID)?;
+
+                Ok(Cmd {
+                    kind: CmdKind::Let(lvalue, typed_expr),
+                    location: self.location,
+                })
+            }
+            CmdKind::Assert(expr, msg) => {
+                let typed_expr = expr.typecheck(env, GLOBAL_SCOPE_ID)?;
+                typed_expr.expect_type(&Typed::Bool, env)?;
+
+                Ok(Cmd {
+                    kind: CmdKind::Assert(typed_expr, msg),
+                    location: self.location,
+                })
+            }
+            CmdKind::Print(str) => Ok(Cmd {
+                kind: CmdKind::Print(str),
+                location: self.location,
+            }),
             CmdKind::Show(expr) => {
-                let typed_expr = expr.typecheck(env)?;
+                let typed_expr = expr.typecheck(env, GLOBAL_SCOPE_ID)?;
 
                 Ok(Cmd {
                     kind: CmdKind::Show(typed_expr),
                     location: self.location,
                 })
             }
-            CmdKind::Time(cmd) => todo!(),
+            CmdKind::Time(cmd) => Ok(Cmd {
+                kind: CmdKind::Time(Box::new(cmd.typecheck(env)?)),
+                location: self.location,
+            }),
             CmdKind::Function {
                 name,
                 params,
                 return_type,
                 body,
-                scope,
-            } => todo!(),
+                ..
+            } => {
+                let scope = env.add_function(name, &params, &return_type)?;
+                let ret_type = Typed::from_ast_type(&return_type, env)?;
+                let mut found_ret = false;
+                let mut typed_body = Vec::with_capacity(body.len());
+                let last_stmt_span = body.last().map(|s| s.location()).unwrap_or(self.location);
+
+                for stmt in body {
+                    typed_body.push(stmt.typecheck(env, scope)?);
+
+                    match typed_body.last().map(|s| s.kind()) {
+                        Some(StmtType::Return(expr)) => {
+                            expr.expect_type(&ret_type, env)?;
+                            found_ret = true;
+                        }
+                        _ => (),
+                    }
+                }
+
+                if !found_ret {
+                    return Err(miette!(
+                        severity = Severity::Error,
+                        labels = vec![
+                            LabeledSpan::new(
+                                Some(format!(
+                                    "return type: {} defined here",
+                                    ret_type.as_str(env)
+                                )),
+                                return_type.location().start(),
+                                return_type.location().len(),
+                            ),
+                            LabeledSpan::new(
+                                Some(format!("return statment expected here")),
+                                last_stmt_span.start(),
+                                last_stmt_span.len()
+                            ),
+                        ],
+                        "Missing return statment"
+                    ));
+                }
+
+                Ok(Cmd {
+                    kind: CmdKind::Function {
+                        name,
+                        params,
+                        return_type,
+                        body: typed_body.into_boxed_slice(),
+                        scope,
+                    },
+                    location: self.location,
+                })
+            }
             CmdKind::Struct { name, fields } => {
                 env.add_struct(name, &*fields)?;
 

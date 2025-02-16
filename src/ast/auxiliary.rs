@@ -40,23 +40,33 @@ impl Parse<Span> for Span {
 pub struct LValue {
     location: Span,
     variable: Span,
-    array_bindings: Option<Box<[Span]>>,
+    array_bindings: Box<[Span]>,
 }
 
 impl LValue {
     pub fn to_s_expr(&self, src: &[u8]) -> String {
-        match &self.array_bindings {
-            //(FnCmd x (((ArrayLValue y H) (IntType))) (VoidType))
-            Some(array_bindings) => {
-                let mut s_expr = format!("(ArrayLValue {}", self.variable.as_str(src));
-                for binding in array_bindings {
-                    s_expr.push(' ');
-                    s_expr.push_str(binding.as_str(src));
-                }
-                s_expr.push(')');
-                s_expr
-            }
-            None => format!("(VarLValue {})", self.variable.as_str(src)),
+        let mut s_expr = format!("(ArrayLValue {}", self.variable.as_str(src));
+        for binding in &self.array_bindings {
+            s_expr.push(' ');
+            s_expr.push_str(binding.as_str(src));
+        }
+        s_expr.push(')');
+        s_expr
+    }
+
+    pub fn array_bindings(&self) -> &Box<[Span]> {
+        &self.array_bindings
+    }
+
+    pub fn variable(&self) -> Span {
+        self.variable
+    }
+
+    pub fn from_span(var: Span) -> Self {
+        LValue {
+            location: var,
+            variable: var,
+            array_bindings: vec![].into_boxed_slice(),
         }
     }
 }
@@ -69,9 +79,9 @@ impl Parse<LValue> for LValue {
             let bindings = parse_sequence(ts, TokenType::Comma, TokenType::RSquare)?;
             let [r_square_token] = expect_tokens(ts, [TokenType::RSquare])?;
             location = location.join(&r_square_token.span());
-            Some(bindings)
+            bindings
         } else {
-            None
+            vec![].into_boxed_slice()
         };
 
         Ok(Self {
@@ -85,7 +95,7 @@ impl Parse<LValue> for LValue {
 /// binding : <lvalue> : <type>
 #[derive(Debug, Clone)]
 pub struct Binding {
-    _location: Span,
+    location: Span,
     l_value: LValue,
     variable_type: Type,
 }
@@ -98,7 +108,7 @@ impl Parse<Binding> for Binding {
         let location = l_value.location.join(&variable_type.location());
 
         Ok(Self {
-            _location: location,
+            location,
             l_value,
             variable_type,
         })
@@ -111,5 +121,21 @@ impl Binding {
             self.l_value.to_s_expr(src),
             self.variable_type.to_s_expr(src)
         )
+    }
+
+    pub fn _location(&self) -> Span {
+        self.location
+    }
+
+    pub fn l_value(&self) -> &LValue {
+        &self.l_value
+    }
+
+    pub fn variable_type(&self) -> &Type {
+        &self.variable_type
+    }
+
+    pub fn location(&self) -> Span {
+        self.location
     }
 }
