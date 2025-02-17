@@ -115,6 +115,9 @@ impl Stmt {
             StmtType::Let(lvalue, expr) => {
                 let typed_expr = expr.typecheck(env, scope_id)?;
                 env.add_lval(&lvalue, typed_expr.type_data().clone(), scope_id)?;
+                if let Some(bindings) = lvalue.array_bindings() {
+                    typed_expr.expect_array_of_rank(bindings.len(), env)?;
+                }
 
                 Ok(Stmt {
                     kind: StmtType::Let(lvalue, typed_expr),

@@ -35,14 +35,14 @@ pub fn builtin_vars() -> Scope<'static> {
                 "args",
                 VarInfo {
                     var_type: Typed::Array(Box::new(Typed::Int), 1),
-                    _bindings: vec![].into_boxed_slice(),
+                    bindings: vec![].into_boxed_slice(),
                 },
             ),
             (
                 "argnum",
                 VarInfo {
                     var_type: Typed::Int,
-                    _bindings: vec![].into_boxed_slice(),
+                    bindings: vec![].into_boxed_slice(),
                 },
             ),
         ]),

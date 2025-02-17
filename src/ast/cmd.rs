@@ -242,6 +242,18 @@ impl Cmd {
         match self.kind {
             CmdKind::ReadImage(s, lvalue) => {
                 env.add_lval(&lvalue, IMAGE_TYPE.clone(), GLOBAL_SCOPE_ID)?;
+                let number_of_bindings = lvalue.array_bindings().map(|b| b.len()).unwrap_or(2);
+                if number_of_bindings != 2 {
+                    return Err(miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::new(
+                            Some(format!("expected 2 bindings found {}", number_of_bindings)),
+                            lvalue.location().start(),
+                            lvalue.location().len(),
+                        )],
+                        "Unexpected token found"
+                    ));
+                }
                 Ok(Cmd {
                     kind: CmdKind::ReadImage(s, lvalue),
                     location: self.location,
@@ -259,7 +271,9 @@ impl Cmd {
             CmdKind::Let(lvalue, expr) => {
                 let typed_expr = expr.typecheck(env, GLOBAL_SCOPE_ID)?;
                 env.add_lval(&lvalue, typed_expr.type_data().clone(), GLOBAL_SCOPE_ID)?;
-
+                if let Some(bindings) = lvalue.array_bindings() {
+                    typed_expr.expect_array_of_rank(bindings.len(), env)?;
+                }
                 Ok(Cmd {
                     kind: CmdKind::Let(lvalue, typed_expr),
                     location: self.location,
@@ -315,7 +329,7 @@ impl Cmd {
                     }
                 }
 
-                if !found_ret {
+                if !found_ret && ret_type != Typed::Void {
                     return Err(miette!(
                         severity = Severity::Error,
                         labels = vec![

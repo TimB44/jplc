@@ -197,10 +197,6 @@ impl<'a> Parse<(Span, Expr)> for (Span, Expr) {
 }
 
 impl Expr {
-    pub fn location(&self) -> Span {
-        self.location
-    }
-
     fn parse_control(ts: &mut TokenStream) -> miette::Result<Self> {
         match ts.peek_type() {
             Some(TokenType::If) => Self::parse_if(ts),
@@ -537,7 +533,7 @@ impl Expr<Typed> {
                     self.type_data.as_str(env)
                 )),
                 self.location.start(),
-                self.location.end(),
+                self.location.len(),
             )],
             "Type mismatch"
         ))
@@ -560,13 +556,48 @@ impl Expr<Typed> {
                     self.type_data.as_str(env),
                 )),
                 self.location.start(),
-                self.location.end(),
+                self.location.len(),
             )],
             "Type mismatch"
         ))
     }
     pub fn type_data(&self) -> &Typed {
         &self.type_data
+    }
+
+    pub fn expect_array_of_rank(
+        &self,
+        expected_rank: usize,
+        env: &Environment,
+    ) -> miette::Result<()> {
+        match self.type_data() {
+            Typed::Array(_, rank) if *rank as usize == expected_rank => Ok(()),
+            Typed::Array(_, rank) => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!(
+                        "expected array of rank: {}, found array of rank: {}",
+                        expected_rank, rank,
+                    )),
+                    self.location().start(),
+                    self.location().len(),
+                )],
+                "Unexpected token found"
+            )),
+            acutal_type @ _ => Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!(
+                        "expected array of rank: {}, found type: {}",
+                        expected_rank,
+                        acutal_type.as_str(env)
+                    )),
+                    self.location().start(),
+                    self.location().len(),
+                )],
+                "Unexpected token found"
+            )),
+        }
     }
 }
 
@@ -846,10 +877,8 @@ impl Expr {
                                     "Expected type array type, found: {}",
                                     t.as_str(env)
                                 )),
-                                //expr.location.start(),
-                                //expr.location.len()
-                                0,
-                                1
+                                arr_expr_typed.location.start(),
+                                arr_expr_typed.location.len()
                             )],
                             "Can only index arrays"
                         ));
@@ -913,6 +942,18 @@ impl Expr {
                 let inner_scope = env.new_scope(scope_id);
                 let mut typed_vars = Vec::with_capacity(vars.len());
 
+                if vars.is_empty() {
+                    return Err(miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::new(
+                            Some(format!("array comprehension must have at least 1 binding")),
+                            self.location.start(),
+                            self.location.len()
+                        )],
+                        "Can not create a zero rank array"
+                    ));
+                }
+
                 for (name, val) in vars {
                     let typed = val.typecheck(env, scope_id)?;
                     typed.expect_type(&Typed::Int, env)?;
@@ -937,6 +978,18 @@ impl Expr {
             ExprKind::Sum(vars, expr, _) => {
                 let inner_scope = env.new_scope(scope_id);
                 let mut typed_vars = Vec::with_capacity(vars.len());
+
+                if vars.is_empty() {
+                    return Err(miette!(
+                        severity = Severity::Error,
+                        labels = vec![LabeledSpan::new(
+                            Some(format!("sum comprehension must have at least 1 binding")),
+                            self.location.start(),
+                            self.location.len()
+                        )],
+                        "Illegal sum expresion"
+                    ));
+                }
 
                 for (name, val) in vars {
                     let typed = val.typecheck(env, scope_id)?;
@@ -1081,6 +1134,14 @@ impl Expr {
 }
 
 impl<T: TypeState> Expr<T> {
+    pub fn location(&self) -> Span {
+        self.location
+    }
+
+    pub fn kind(&self) -> &ExprKind<T> {
+        &self.kind
+    }
+
     pub fn to_s_expr_general(
         &self,
         src: &[u8],

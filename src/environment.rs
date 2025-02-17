@@ -7,7 +7,7 @@ use crate::{
     utils::Span,
 };
 use builtins::{builtin_fns, builtin_structs, builtin_vars};
-use miette::{miette, Context, LabeledSpan, Severity};
+use miette::{miette, LabeledSpan, Severity};
 use std::collections::{hash_map::Entry, HashMap};
 
 pub mod builtins;
@@ -67,7 +67,7 @@ pub struct Scope<'a> {
 pub struct VarInfo<'a> {
     var_type: Typed,
     // TODO: update once used
-    _bindings: Box<[&'a str]>,
+    bindings: Box<[&'a str]>,
 }
 
 impl<'a> StructInfo<'a> {
@@ -254,29 +254,32 @@ impl<'a> Environment<'a> {
 
     pub fn add_lval(
         &mut self,
-        binding: &LValue,
+        l_val: &LValue,
         var_type: Typed,
         scope_id: usize,
     ) -> miette::Result<()> {
-        self.check_name_free(binding.variable(), scope_id)?;
+        self.check_name_free(l_val.variable(), scope_id)?;
+        let name_str = l_val.variable().as_str(self.src);
+        let bindings = l_val
+            .array_bindings()
+            .iter()
+            .map(|t| t.iter())
+            .flatten()
+            .map(|s| s.as_str(self.src))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
 
-        for arr_len_binding in binding.array_bindings() {
-            self.check_name_free(*arr_len_binding, scope_id)?;
-        }
-
-        let name_str = binding.variable().as_str(self.src);
         self.scopes[scope_id].names.insert(
             name_str,
             VarInfo {
                 var_type: var_type.clone(),
-                _bindings: binding
-                    .array_bindings()
-                    .into_iter()
-                    .map(|span| span.as_str(self.src))
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
+                bindings,
             },
         );
+
+        for arr_len_binding in l_val.array_bindings().iter().map(|b| b.iter()).flatten() {
+            self.add_lval(&LValue::from_span(*arr_len_binding), Typed::Int, scope_id)?;
+        }
 
         Ok(())
     }
@@ -308,7 +311,7 @@ impl<'a> Environment<'a> {
                     name.start(),
                     name.len(),
                 )],
-                help = "Shaddowing is not allowed in JPL",
+                help = "Shadowing is not allowed in JPL",
                 "Duplicate name found"
             ));
         }

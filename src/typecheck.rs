@@ -49,7 +49,7 @@ impl Typed {
                 format!("ArrayType ({}) {}", typed.to_typed_s_exprsision(env), rank)
             }
             Typed::Struct(id) => format!("StructType {}", env.get_struct_id(*id).name()),
-            Typed::Void => "(VoidType)".to_string(),
+            Typed::Void => "VoidType".to_string(),
         }
     }
 }
