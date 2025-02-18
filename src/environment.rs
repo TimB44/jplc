@@ -39,7 +39,7 @@ pub struct FunctionInfo<'a> {
     scope: usize,
 }
 
-impl<'a> FunctionInfo<'a> {
+impl FunctionInfo<'_> {
     pub fn args(&self) -> &[Typed] {
         &self.args
     }
@@ -70,8 +70,8 @@ pub struct VarInfo<'a> {
     bindings: Box<[&'a str]>,
 }
 
-impl<'a> StructInfo<'a> {
-    pub fn fields(&self) -> &Box<[(&str, Typed)]> {
+impl StructInfo<'_> {
+    pub fn fields(&self) -> &[(&str, Typed)] {
         &self.fields
     }
 
@@ -100,19 +100,16 @@ impl<'a> Environment<'a> {
 
     pub fn add_struct(&mut self, name: Span, params: &[(Span, Type)]) -> miette::Result<()> {
         let name_str = name.as_str(self.src);
-        match self.struct_ids.get(name_str) {
-            Some(_) => {
-                return Err(miette!(
-                    severity = Severity::Error,
-                    labels = vec![LabeledSpan::new(
-                        Some(format!("Struct {} already declared", name_str)),
-                        name.start(),
-                        name.len(),
-                    )],
-                    "Redefinition of struct"
-                ))
-            }
-            None => (),
+        if self.struct_ids.contains_key(name_str) {
+            return Err(miette!(
+                severity = Severity::Error,
+                labels = vec![LabeledSpan::new(
+                    Some(format!("Struct {} already declared", name_str)),
+                    name.start(),
+                    name.len(),
+                )],
+                "Redefinition of struct"
+            ));
         }
 
         let mut fields = Vec::with_capacity(params.len());
@@ -165,7 +162,7 @@ impl<'a> Environment<'a> {
         let id = self
             .struct_ids
             .get(loc.as_str(self.src))
-            .map(|x| *x)
+            .copied()
             .ok_or_else(|| {
                 let struct_name = loc.as_str(self.src);
                 miette!(
@@ -206,7 +203,7 @@ impl<'a> Environment<'a> {
         let name = name.as_str(self.src);
 
         let args = args
-            .into_iter()
+            .iter()
             .map(|arg| {
                 let arg_type = Typed::from_ast_type(arg.variable_type(), self)?;
                 self.add_lval(arg.l_value(), arg_type.clone(), scope)?;
@@ -263,8 +260,7 @@ impl<'a> Environment<'a> {
         let bindings = l_val
             .array_bindings()
             .iter()
-            .map(|t| t.iter())
-            .flatten()
+            .flat_map(|t| t.iter())
             .map(|s| s.as_str(self.src))
             .collect::<Vec<_>>()
             .into_boxed_slice();
@@ -277,7 +273,7 @@ impl<'a> Environment<'a> {
             },
         );
 
-        for arr_len_binding in l_val.array_bindings().iter().map(|b| b.iter()).flatten() {
+        for arr_len_binding in l_val.array_bindings().iter().flat_map(|b| b.iter()) {
             self.add_lval(&LValue::from_span(*arr_len_binding), Typed::Int, scope_id)?;
         }
 

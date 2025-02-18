@@ -8,7 +8,7 @@ use crate::{
 use super::{FunctionInfo, Scope, StructInfo};
 
 pub const RGBA_STRUCT_ID: usize = 0;
-pub const IMAGE_TYPE: LazyLock<Typed> =
+pub static IMAGE_TYPE: LazyLock<Typed> =
     LazyLock::new(|| Typed::Array(Box::new(Typed::Struct(RGBA_STRUCT_ID)), 2));
 
 pub fn builtin_structs() -> (HashMap<&'static str, usize>, Vec<StructInfo<'static>>) {

@@ -318,15 +318,14 @@ impl Cmd {
                 let last_stmt_span = body.last().map(|s| s.location()).unwrap_or(self.location);
 
                 for stmt in body {
-                    typed_body.push(stmt.typecheck(env, scope)?);
+                    let typed_stmt = stmt.typecheck(env, scope)?;
 
-                    match typed_body.last().map(|s| s.kind()) {
-                        Some(StmtType::Return(expr)) => {
-                            expr.expect_type(&ret_type, env)?;
-                            found_ret = true;
-                        }
-                        _ => (),
+                    if let StmtType::Return(expr) = typed_stmt.kind() {
+                        expr.expect_type(&ret_type, env)?;
+                        found_ret = true;
                     }
+
+                    typed_body.push(typed_stmt);
                 }
 
                 if !found_ret && ret_type != Typed::Void {
@@ -342,7 +341,7 @@ impl Cmd {
                                 return_type.location().len(),
                             ),
                             LabeledSpan::new(
-                                Some(format!("return statment expected here")),
+                                Some("return statment expected here".to_string()),
                                 last_stmt_span.start(),
                                 last_stmt_span.len()
                             ),
@@ -363,7 +362,7 @@ impl Cmd {
                 })
             }
             CmdKind::Struct { name, fields } => {
-                env.add_struct(name, &*fields)?;
+                env.add_struct(name, &fields)?;
 
                 Ok(Cmd {
                     kind: CmdKind::Struct { name, fields },
@@ -412,7 +411,7 @@ impl<T: TypeState> Cmd<T> {
             CmdKind::Assert(expr, str) => {
                 format!(
                     "(AssertCmd {} {})",
-                    expr_printer(&expr),
+                    expr_printer(expr),
                     str.location().as_str(src)
                 )
             }

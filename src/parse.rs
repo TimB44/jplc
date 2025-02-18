@@ -12,7 +12,7 @@ use miette::{miette, LabeledSpan, Severity};
 
 /// Something that can be parsed from a token stream
 pub(super) trait Parse<T> {
-    fn parse<'a>(ts: &mut TokenStream<'a>) -> miette::Result<T>;
+    fn parse(ts: &mut TokenStream<'_>) -> miette::Result<T>;
 }
 
 /// Parses P delimiter ... P and returns a boxed slice of P

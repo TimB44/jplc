@@ -2,12 +2,12 @@
 use super::{super::parse::parse_sequence, expect_tokens, Parse, TokenStream};
 use crate::{
     ast::auxiliary::LValue,
-    environment::{Environment, GLOBAL_SCOPE_ID},
+    environment::Environment,
     lex::TokenType,
     typecheck::{TypeState, Typed, UnTyped},
     utils::Span,
 };
-use miette::{miette, LabeledSpan, Report, Severity};
+use miette::{miette, LabeledSpan, Severity};
 
 //TODO: allow numbers one bigger due to negative numbers
 const POSITIVE_INT_LIT_MAX: u64 = 9223372036854775807;
@@ -144,7 +144,7 @@ pub enum ExprKind<T: TypeState = UnTyped> {
 
 type VariantBuilder = fn(Box<(Expr, Expr)>) -> ExprKind;
 
-fn parse_binary_op<'a>(
+fn parse_binary_op(
     ts: &mut TokenStream,
     ops: &[(&str, VariantBuilder)],
     mut sub_class: impl FnMut(&mut TokenStream) -> miette::Result<Expr>,
@@ -188,7 +188,7 @@ impl Parse<Expr> for Expr {
 }
 
 /// Used for sum and array looping constructs
-impl<'a> Parse<(Span, Expr)> for (Span, Expr) {
+impl Parse<(Span, Expr)> for (Span, Expr) {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var, _] = expect_tokens(ts, [TokenType::Variable, TokenType::Colon])?;
         let expr = Expr::parse(ts)?;
@@ -508,9 +508,7 @@ impl Expr<Typed> {
             env.src(),
             Some(|expr: &Expr<Typed>| expr.to_typed_s_exprsision(env)),
         );
-        let index_for_type = normal
-            .find(|c| c == ' ' || c == ')')
-            .expect("invalid s-expr found");
+        let index_for_type = normal.find([' ', ')']).expect("invalid s-expr found");
 
         normal.insert_str(
             index_for_type,
@@ -520,7 +518,7 @@ impl Expr<Typed> {
         normal
     }
 
-    pub fn expect_type<'a>(&self, expected: &Typed, env: &Environment) -> miette::Result<()> {
+    pub fn expect_type(&self, expected: &Typed, env: &Environment) -> miette::Result<()> {
         if &self.type_data == expected {
             return Ok(());
         }
@@ -584,7 +582,7 @@ impl Expr<Typed> {
                 )],
                 "Unexpected token found"
             )),
-            acutal_type @ _ => Err(miette!(
+            acutal_type => Err(miette!(
                 severity = Severity::Error,
                 labels = vec![LabeledSpan::new(
                     Some(format!(
@@ -604,13 +602,13 @@ impl Expr<Typed> {
 impl Expr {
     // Add case for compaing bools
     fn typecheck_cmp_binop(
-        operands: Box<(Expr, Expr)>,
+        operands: (Expr, Expr),
         varient: fn(Box<(Expr<Typed>, Expr<Typed>)>) -> ExprKind<Typed>,
         location: Span,
         env: &mut Environment,
         scope_id: usize,
     ) -> miette::Result<Expr<Typed>> {
-        let (lhs, rhs) = *operands;
+        let (lhs, rhs) = operands;
         let typed_lhs = lhs.typecheck(env, scope_id)?;
         let typed_rhs = rhs.typecheck(env, scope_id)?;
 
@@ -625,13 +623,13 @@ impl Expr {
     }
     // Add case for compaing bools
     fn typecheck_eq_binop(
-        operands: Box<(Expr, Expr)>,
+        operands: (Expr, Expr),
         varient: fn(Box<(Expr<Typed>, Expr<Typed>)>) -> ExprKind<Typed>,
         location: Span,
         env: &mut Environment,
         scope_id: usize,
     ) -> miette::Result<Expr<Typed>> {
-        let (lhs, rhs) = *operands;
+        let (lhs, rhs) = operands;
         let typed_lhs = lhs.typecheck(env, scope_id)?;
         let typed_rhs = rhs.typecheck(env, scope_id)?;
 
@@ -645,13 +643,13 @@ impl Expr {
         })
     }
     fn typecheck_numerical_binop(
-        operands: Box<(Expr, Expr)>,
+        operands: (Expr, Expr),
         varient: fn(Box<(Expr<Typed>, Expr<Typed>)>) -> ExprKind<Typed>,
         location: Span,
         env: &mut Environment,
         scope_id: usize,
     ) -> miette::Result<Expr<Typed>> {
-        let (lhs, rhs) = *operands;
+        let (lhs, rhs) = operands;
         let typed_lhs = lhs.typecheck(env, scope_id)?;
         let typed_rhs = rhs.typecheck(env, scope_id)?;
 
@@ -869,7 +867,7 @@ impl Expr {
                 let arr_expr_typed = arr_expr.typecheck(env, scope_id)?;
                 let (element_type, rank) = match &arr_expr_typed.type_data {
                     Typed::Array(element_type, rank) => (element_type, rank),
-                    t @ _ => {
+                    t => {
                         return Err(miette!(
                             severity = Severity::Error,
                             labels = vec![LabeledSpan::new(
@@ -946,7 +944,7 @@ impl Expr {
                     return Err(miette!(
                         severity = Severity::Error,
                         labels = vec![LabeledSpan::new(
-                            Some(format!("array comprehension must have at least 1 binding")),
+                            Some("array comprehension must have at least 1 binding".to_string()),
                             self.location.start(),
                             self.location.len()
                         )],
@@ -983,7 +981,7 @@ impl Expr {
                     return Err(miette!(
                         severity = Severity::Error,
                         labels = vec![LabeledSpan::new(
-                            Some(format!("sum comprehension must have at least 1 binding")),
+                            Some("sum comprehension must have at least 1 binding".to_string()),
                             self.location.start(),
                             self.location.len()
                         )],
@@ -1036,69 +1034,69 @@ impl Expr {
             }
 
             ExprKind::LessThan(operands) => Self::typecheck_cmp_binop(
-                operands,
+                *operands,
                 ExprKind::LessThan,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::GreaterThan(operands) => Self::typecheck_cmp_binop(
-                operands,
+                *operands,
                 ExprKind::GreaterThan,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::LessThanEq(operands) => Self::typecheck_cmp_binop(
-                operands,
+                *operands,
                 ExprKind::LessThanEq,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::GreaterThanEq(operands) => Self::typecheck_cmp_binop(
-                operands,
+                *operands,
                 ExprKind::GreaterThanEq,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::Eq(operands) => {
-                Self::typecheck_eq_binop(operands, ExprKind::Eq, self.location, env, scope_id)?
+                Self::typecheck_eq_binop(*operands, ExprKind::Eq, self.location, env, scope_id)?
             }
             ExprKind::NotEq(operands) => {
-                Self::typecheck_eq_binop(operands, ExprKind::NotEq, self.location, env, scope_id)?
+                Self::typecheck_eq_binop(*operands, ExprKind::NotEq, self.location, env, scope_id)?
             }
             ExprKind::Add(operands) => Self::typecheck_numerical_binop(
-                operands,
+                *operands,
                 ExprKind::Add,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::Minus(operands) => Self::typecheck_numerical_binop(
-                operands,
+                *operands,
                 ExprKind::Minus,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::Mulitply(operands) => Self::typecheck_numerical_binop(
-                operands,
+                *operands,
                 ExprKind::Mulitply,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::Divide(operands) => Self::typecheck_numerical_binop(
-                operands,
+                *operands,
                 ExprKind::Divide,
                 self.location,
                 env,
                 scope_id,
             )?,
             ExprKind::Modulo(operands) => Self::typecheck_numerical_binop(
-                operands,
+                *operands,
                 ExprKind::Modulo,
                 self.location,
                 env,

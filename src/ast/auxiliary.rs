@@ -60,8 +60,8 @@ impl LValue {
         }
     }
 
-    pub fn array_bindings(&self) -> Option<&Box<[Span]>> {
-        self.array_bindings.as_ref()
+    pub fn array_bindings(&self) -> Option<&[Span]> {
+        self.array_bindings.as_deref()
     }
 
     pub fn variable(&self) -> Span {

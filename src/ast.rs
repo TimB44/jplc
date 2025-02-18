@@ -22,7 +22,7 @@ pub struct Program<T: TypeState = UnTyped> {
     commands: Box<[Cmd<T>]>,
 }
 
-impl<'a> Parse<Program> for Program {
+impl Parse<Program> for Program {
     fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
         // Remove a potential leading newline
         if next_match!(ts, TokenType::Newline) {
