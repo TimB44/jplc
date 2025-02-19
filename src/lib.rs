@@ -21,7 +21,7 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
     // TODO: Remove assertion for future assignments
     assert!(
         mode.lex | mode.parse | mode.typecheck,
-        "Only lexing, parsing and part of typechecking implemented"
+        "Only lexing, parsing and typechecking implemented"
     );
     let start_time = Instant::now();
 
@@ -66,7 +66,7 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         }
 
         println!(
-            "Compilation succeeded: parsing complete in {}ms",
+            "Compilation succeeded: type analysis complete in {}ms",
             Instant::now().duration_since(start_time).as_millis()
         );
         return;
