@@ -28,4 +28,12 @@ pub struct Mode {
     /// Perform type checking  
     #[clap(short, long)]
     pub typecheck: bool,
+
+    /// Generate strait-line C code
+    #[clap(short = 'i', long = "c-ir")]
+    pub c_ir: bool,
+
+    /// Generate assembly code
+    #[clap(short = 's', long = "asm")]
+    pub assembly: bool,
 }

@@ -20,8 +20,8 @@ mod typecheck;
 pub fn compile(source_name: String, source: String, mode: Mode) {
     // TODO: Remove assertion for future assignments
     assert!(
-        mode.lex | mode.parse | mode.typecheck,
-        "Only lexing, parsing and typechecking implemented"
+        mode.lex | mode.parse | mode.typecheck | mode.c_ir,
+        "Only lexing, parsing, typechecking and parts of C IR implemented"
     );
     let start_time = Instant::now();
 
@@ -72,5 +72,8 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         return;
     }
 
+    if mode.c_ir {
+        todo!("HW 8 & 9");
+    }
     unreachable!()
 }
