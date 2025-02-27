@@ -58,7 +58,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "sqrt",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -68,7 +67,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "exp",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -78,7 +76,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "sin",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -88,7 +85,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "cos",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -98,7 +94,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "tan",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -108,7 +103,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "asin",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -118,7 +112,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "acos",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -128,7 +121,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "atan",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -138,7 +130,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "log",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -148,7 +139,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float, Typed::Float].into_boxed_slice(),
                 name: "pow",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -158,7 +148,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float, Typed::Float].into_boxed_slice(),
                 name: "atan2",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -168,7 +157,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Int].into_boxed_slice(),
                 name: "to_float",
                 ret: Typed::Float,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),
@@ -178,7 +166,6 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![Typed::Float].into_boxed_slice(),
                 name: "to_int",
                 ret: Typed::Int,
-                //TODO: IDK if this is good
                 scope: 0,
             },
         ),

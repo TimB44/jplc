@@ -17,7 +17,6 @@ pub struct Environment<'a> {
     struct_ids: HashMap<&'a str, usize>,
     // Indexed by the struct id
     struct_info: Vec<StructInfo<'a>>,
-
     functions: HashMap<&'a str, FunctionInfo<'a>>,
     scopes: Vec<Scope<'a>>,
 }
