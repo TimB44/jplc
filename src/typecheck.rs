@@ -1,7 +1,7 @@
 use crate::ast::types::{self, Type};
 use crate::environment::Environment;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Typed {
     Int,
     Bool,

@@ -142,6 +142,15 @@ pub enum ExprKind<T: TypeState = UnTyped> {
     Negation(Box<Expr<T>>),
 }
 
+impl<T: TypeState> ExprKind<T> {
+    pub fn varient_eq(&self, other: &ExprKind<T>) -> bool {
+        match self {
+            ExprKind::Paren(inner) => inner.kind.varient_eq(other),
+            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
+        }
+    }
+}
+
 type VariantBuilder = fn(Box<(Expr, Expr)>) -> ExprKind;
 
 fn parse_binary_op(

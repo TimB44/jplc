@@ -11,6 +11,7 @@ use super::{
     Parse, TokenStream,
 };
 
+use crate::c_codegen::{write_stmt, CGenEnv};
 use crate::environment::builtins::IMAGE_TYPE;
 use crate::environment::{Environment, GLOBAL_SCOPE_ID};
 use crate::typecheck::{TypeState, Typed, UnTyped};
@@ -382,6 +383,33 @@ impl Cmd<Typed> {
             |expr| expr.to_typed_s_exprsision(env),
             |stmt| stmt.to_typed_s_expr(env),
         )
+    }
+
+    pub fn to_c(&self, c_gen_env: &mut CGenEnv<'_, '_>) {
+        match self.kind {
+            CmdKind::ReadImage(_, lvalue) => todo!(),
+            CmdKind::WriteImage(expr, _) => todo!(),
+            CmdKind::Let(lvalue, expr) => {
+                if expr.kind().varient_eq(&ExprKind::Var)
+            },
+            CmdKind::Assert(expr, _) => todo!(),
+            CmdKind::Print(str) => {
+                let str_lit = str.location().as_str(c_gen_env.env().src());
+                write_stmt!(c_gen_env, "print({})", str_lit);
+            }
+            CmdKind::Show(expr) => todo!(),
+            CmdKind::Time(cmd) => todo!(),
+            CmdKind::Function {
+                name,
+                params,
+                return_type,
+                body,
+                scope,
+            } => todo!(),
+            CmdKind::Struct { name, fields } => {
+                c_gen_env.add_struct(name);
+            }
+        }
     }
 }
 

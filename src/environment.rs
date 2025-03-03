@@ -12,6 +12,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 pub mod builtins;
 
+#[derive(Debug, Clone)]
 pub struct Environment<'a> {
     src: &'a [u8],
     struct_ids: HashMap<&'a str, usize>,
@@ -362,5 +363,9 @@ impl<'a> Environment<'a> {
                 "Invalid variable found"
             ))
         }
+    }
+
+    pub fn functions(&self) -> &HashMap<&'a str, FunctionInfo<'a>> {
+        &self.functions
     }
 }

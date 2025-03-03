@@ -1,4 +1,5 @@
 use crate::{
+    c_codegen::CGenEnv,
     environment::Environment,
     lex::{Lexer, TokenType},
     parse::{expect_tokens, next_match, parse_sequence_trailing, TokenStream},
@@ -54,6 +55,12 @@ impl Program {
                 .collect::<Result<Vec<_>, _>>()?
                 .into_boxed_slice(),
         })
+    }
+
+    pub fn to_c(&self, c_gen_env: &mut CGenEnv<'_, '_>) {
+        for cmd in &self.commands {
+            cmd.to_c(c_gen_env);
+        }
     }
 }
 
