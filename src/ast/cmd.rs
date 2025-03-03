@@ -17,6 +17,8 @@ use crate::typecheck::{TypeState, Typed, UnTyped};
 use crate::{lex::TokenType, utils::Span};
 use miette::{miette, LabeledSpan, Severity};
 
+mod c_codgen;
+
 /// Represents a Command in JPL.
 ///
 /// These are the top level items in a JPL source file

@@ -11,6 +11,7 @@ pub mod cli;
 pub mod utils;
 
 mod ast;
+mod c_codegen;
 mod environment;
 mod lex;
 mod parse;
