@@ -144,4 +144,7 @@ impl Binding {
     pub fn l_value(&self) -> &LValue {
         &self.l_value
     }
+    pub fn location(&self) -> Span {
+        self.location
+    }
 }

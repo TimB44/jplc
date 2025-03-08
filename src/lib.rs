@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use ast::Program;
+use c_codegen::generate_c;
 use cli::Mode;
 use environment::Environment;
 use lex::Lexer;
@@ -74,7 +75,13 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
     }
 
     if mode.c_ir {
-        todo!("HW 8 & 9");
+        generate_c(typed_program, &env);
+        println!(
+            "Compilation succeeded: c code generation complete in {}ms",
+            Instant::now().duration_since(start_time).as_millis()
+        );
+        return;
     }
+
     unreachable!()
 }

@@ -10,9 +10,7 @@ use super::{
     types::Type,
     Parse, TokenStream,
 };
-use std::fmt::Write;
 
-use crate::c_codegen::{write_stmt, CGenEnv};
 use crate::environment::builtins::IMAGE_TYPE;
 use crate::environment::{Environment, GLOBAL_SCOPE_ID};
 use crate::typecheck::{TypeState, Typed, UnTyped};

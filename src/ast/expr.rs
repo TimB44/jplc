@@ -4,7 +4,6 @@
 use super::{super::parse::parse_sequence, expect_tokens, Parse, TokenStream};
 use crate::{
     ast::auxiliary::LValue,
-    c_codegen::{write_assign_stmt, write_stmt, CGenEnv, Ident},
     environment::Environment,
     lex::TokenType,
     typecheck::{TypeState, Typed, UnTyped},
