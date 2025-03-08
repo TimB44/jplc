@@ -1,13 +1,17 @@
+// TODO: merge typechecking and parsing
+
 //! Defines the types of functions to parse all kinds of expressions in JPL
 use super::{super::parse::parse_sequence, expect_tokens, Parse, TokenStream};
 use crate::{
     ast::auxiliary::LValue,
+    c_codegen::{write_assign_stmt, write_stmt, CGenEnv, Ident},
     environment::Environment,
     lex::TokenType,
     typecheck::{TypeState, Typed, UnTyped},
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};
+use std::fmt::Write;
 
 //TODO: allow numbers one bigger due to negative numbers
 const POSITIVE_INT_LIT_MAX: u64 = 9223372036854775807;
@@ -568,9 +572,6 @@ impl Expr<Typed> {
             "Type mismatch"
         ))
     }
-    pub fn type_data(&self) -> &Typed {
-        &self.type_data
-    }
 
     pub fn expect_array_of_rank(
         &self,
@@ -606,6 +607,74 @@ impl Expr<Typed> {
             )),
         }
     }
+
+    //pub fn to_c<'a, 'b>(
+    //    &self,
+    //    c_gen_env: &mut CGenEnv<'a, 'b>,
+    //    env: &Environment<'b>,
+    //) -> Ident<'b> {
+    //    match &self.kind {
+    //        ExprKind::IntLit(val) => {
+    //            assert_eq!(self.type_data, Typed::Int);
+    //            {
+    //                let id = c_gen_env.write_assign_stmt((&self.type_data));
+    //                write!(c_gen_env.cur_fn().src(), "{}", val);
+    //                c_gen_env.cur_fn().src().push_str("");
+    //                Ident::Local(id)
+    //            }
+    //        }
+    //        ExprKind::FloatLit(val) => {
+    //            assert_eq!(self.type_data, Typed::Float);
+    //
+    //            write_assign_stmt!(c_gen_env, &self.type_data, "{}", val.trunc())
+    //        }
+    //        ExprKind::True => {
+    //            assert_eq!(self.type_data, Typed::Bool);
+    //
+    //            // Hack for autograder
+    //            write_assign_stmt!(c_gen_env, &self.type_data, "true")
+    //        }
+    //        ExprKind::False => {
+    //            assert_eq!(self.type_data, Typed::Bool);
+    //
+    //            // Hack for autograder
+    //            write_assign_stmt!(c_gen_env, &self.type_data, "false")
+    //        }
+    //        ExprKind::Var => {
+    //            let var_str = self.location.as_str(env.src());
+    //            *(c_gen_env
+    //                .cur_fn()
+    //                .sym_tab()
+    //                .get(var_str)
+    //                .unwrap_or(&Ident::Global(var_str)))
+    //        }
+    //        ExprKind::Void => todo!(),
+    //        ExprKind::Paren(expr) => todo!(),
+    //        ExprKind::ArrayLit(exprs) => todo!(),
+    //        ExprKind::StructInit(span, exprs) => todo!(),
+    //        ExprKind::FunctionCall(span, exprs) => todo!(),
+    //        ExprKind::FieldAccess(expr, span) => todo!(),
+    //        ExprKind::ArrayIndex(expr, exprs) => todo!(),
+    //        ExprKind::If(_) => todo!(),
+    //        ExprKind::ArrayComp(items, expr, _) => todo!(),
+    //        ExprKind::Sum(items, expr, _) => todo!(),
+    //        ExprKind::And(_) => todo!(),
+    //        ExprKind::Or(_) => todo!(),
+    //        ExprKind::LessThan(_) => todo!(),
+    //        ExprKind::GreaterThan(_) => todo!(),
+    //        ExprKind::LessThanEq(_) => todo!(),
+    //        ExprKind::GreaterThanEq(_) => todo!(),
+    //        ExprKind::Eq(_) => todo!(),
+    //        ExprKind::NotEq(_) => todo!(),
+    //        ExprKind::Add(_) => todo!(),
+    //        ExprKind::Minus(_) => todo!(),
+    //        ExprKind::Mulitply(_) => todo!(),
+    //        ExprKind::Divide(_) => todo!(),
+    //        ExprKind::Modulo(_) => todo!(),
+    //        ExprKind::Not(expr) => todo!(),
+    //        ExprKind::Negation(expr) => todo!(),
+    //    }
+    //}
 }
 
 impl Expr {
@@ -1149,6 +1218,11 @@ impl<T: TypeState> Expr<T> {
         &self.kind
     }
 
+    pub fn type_data(&self) -> &T {
+        &self.type_data
+    }
+
+    // TODO fix this mess
     pub fn to_s_expr_general(
         &self,
         src: &[u8],
