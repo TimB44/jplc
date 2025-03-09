@@ -6,7 +6,7 @@ compile:
 	cargo build -r
 
 run: 
-	./target/release/jplc -t $(TEST) 
+	./target/release/jplc -i $(TEST) 
 
 clean:
 	cargo clean	
