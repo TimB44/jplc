@@ -1,5 +1,4 @@
 use crate::{
-    c_codegen::CGenEnv,
     environment::Environment,
     lex::{Lexer, TokenType},
     parse::{expect_tokens, next_match, parse_sequence_trailing, TokenStream},
@@ -64,12 +63,3 @@ impl<T: TypeState> Program<T> {
         &self.commands
     }
 }
-
-//impl<'a> Typecheck for Program<'a> {
-//    fn check(&mut self, env: &mut typecheck::Environment) -> miette::Result<()> {
-//        for cmd in &self.commands {
-//            cmd.check(env)?;
-//        }
-//        Ok(())
-//    }
-//}
