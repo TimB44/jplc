@@ -100,7 +100,7 @@ impl<'a, 'b> CGenEnv<'a, 'b> {
         };
 
         let entry = (*inner, rank);
-        if !self.array_types.contains(&entry) {
+        if self.array_types.contains(&entry) {
             return;
         }
 
@@ -139,7 +139,7 @@ impl<'a, 'b> CGenEnv<'a, 'b> {
     }
 
     pub fn write_label(&mut self, label: u32) {
-        write!(self.cur_fn().src(), "{}_jump{}:;", INDENTATION, label)
+        write!(self.cur_fn().src(), "{}_jump{}:;\n", INDENTATION, label)
             .expect("string should not fail to write");
     }
 
@@ -300,7 +300,14 @@ macro_rules! write_assign_stmt {
 pub(self) use write_assign_stmt;
 
 macro_rules! write_if_stmt {
-    ($cenv:expr, $($args:tt)*) => {
+    ($cenv:expr, $format:literal, $($args:tt)*) => {
+        {
+            let label = $cenv.gen_jump_sym();
+            write_if_stmt!($cenv, label, $format, $($args)*)
+        }
+    };
+
+    ($cenv:expr, $label:expr, $($args:tt)*) => {
         {
             let src = $cenv.fns[$cenv.cur_fn].src();
             src.push_str(INDENTATION);
@@ -308,9 +315,8 @@ macro_rules! write_if_stmt {
             write!(src, $($args)*)
                 .expect("string should not fail to write");
             src.push_str(")\n");
-            let label = $cenv.gen_jump_sym();
-            $cenv.write_goto(label);
-            label
+            $cenv.write_goto($label);
+            $label
         }
     };
 }
@@ -478,7 +484,7 @@ pub fn expr_to_ident<'a, 'b>(expr: &Expr<Typed>, cenv: &mut CGenEnv<'a, 'b>) -> 
         ExprKind::FloatLit(val) => {
             assert_eq!(expr.type_data(), &Typed::Float);
 
-            write_assign_stmt!(cenv, &Typed::Float, "{}", val.trunc())
+            write_assign_stmt!(cenv, &Typed::Float, "{:.0}", val.trunc())
         }
         ExprKind::True => {
             assert_eq!(expr.type_data(), &Typed::Bool);
@@ -652,26 +658,99 @@ pub fn expr_to_ident<'a, 'b>(expr: &Expr<Typed>, cenv: &mut CGenEnv<'a, 'b>) -> 
             cenv.gen_arr_struct(arr_type.clone());
             let output_arr_ident = cenv.write_var_declaration(arr_type);
 
-            // int64_t _1 = 1;
-            //    _0.d0 = _1;
-            //    if (_1 > 0)
-            //    goto _jump1;
-            //    fail_assertion("non-positive loop bound");
-            //    _jump1:;
-            let index_idents: Vec<_> = loop_bounds
+            let bounds_idents: Vec<_> = loop_bounds
                 .into_iter()
                 .enumerate()
-                .map(|(i, (_, expr))| {
-                    let index_ident = expr_to_ident(expr, cenv);
-                    write_stmt!(cenv, "{}.d{} = {}", output_arr_ident, i, index_ident);
-                    let ok_label = write_if_stmt!(cenv, "{} > 0", index_ident);
-                    write_stmt!(cenv, "fail_assertion(\"non-positive loop bound\");");
-
-                    index_ident
+                .map(|(i, (name, expr))| {
+                    let bound_ident = expr_to_ident(expr, cenv);
+                    write_stmt!(cenv, "{}.d{} = {}", output_arr_ident, i, bound_ident);
+                    let ok_label = write_if_stmt!(cenv, "{} > 0", bound_ident);
+                    write_stmt!(cenv, "fail_assertion(\"non-positive loop bound\")");
+                    cenv.write_label(ok_label);
+                    bound_ident
                 })
                 .collect();
 
-            todo!()
+            let arr_size_ident = write_assign_stmt!(cenv, &Typed::Int, "1");
+            for bound_ident in bounds_idents.iter() {
+                write_stmt!(cenv, "{} *= {}", arr_size_ident, bound_ident);
+            }
+
+            // Extra allocation not ideal
+            let mut arr_element_type_str = String::new();
+            write_type(&mut arr_element_type_str, body.type_data(), cenv.env);
+
+            write_stmt!(
+                cenv,
+                "{} *= sizeof({})",
+                arr_size_ident,
+                arr_element_type_str
+            );
+            //_0.data = jpl_alloc(_4);
+            write_stmt!(
+                cenv,
+                "{}.data = jpl_alloc({})",
+                output_arr_ident,
+                arr_size_ident
+            );
+
+            // List out the looping variables in reverse order
+            //    int64_t _5 = 0; // c
+            //int64_t _6 = 0; // b
+            //int64_t _7 = 0; // a
+            let mut looping_vars: Vec<_> = loop_bounds
+                .iter()
+                .rev()
+                .map(|(name, _)| {
+                    let loop_var_ident = write_assign_stmt!(cenv, &Typed::Int, "0");
+                    codegen_lvalue(cenv, &LValue::from_span(*name), loop_var_ident);
+                    loop_var_ident
+                })
+                .collect::<Vec<_>>();
+            looping_vars.reverse();
+            let looping_vars = looping_vars;
+            let loop_begining = cenv.gen_jump_sym();
+            cenv.write_label(loop_begining);
+            let body_output_ident = expr_to_ident(body, cenv);
+
+            //TODO: use helper function for this
+            let combined_index = write_assign_stmt!(cenv, &Typed::Int, "0");
+            for (i, index_ident) in looping_vars.iter().enumerate() {
+                write_stmt!(cenv, "{} *= {}.d{}", combined_index, output_arr_ident, i);
+                write_stmt!(cenv, "{} += {}", combined_index, index_ident);
+            }
+
+            write_stmt!(
+                cenv,
+                "{}.data[{}] = {}",
+                output_arr_ident,
+                combined_index,
+                body_output_ident
+            );
+            //_5++;
+            //    if (_5 < _3)
+            //    goto _jump4;
+            //    _5 = 0;
+            for (i, (looping_var_ident, bound_ident)) in looping_vars
+                .iter()
+                .zip(bounds_idents.iter())
+                .enumerate()
+                .rev()
+            {
+                write_stmt!(cenv, "{}++", looping_var_ident);
+                write_if_stmt!(
+                    cenv,
+                    loop_begining,
+                    "{} < {}",
+                    looping_var_ident,
+                    bound_ident
+                );
+                if i != 0 {
+                    write_stmt!(cenv, "{} = 0", looping_var_ident)
+                }
+            }
+
+            output_arr_ident
         }
         ExprKind::Sum(items, expr, _) => todo!(),
         ExprKind::And(args) => {
@@ -722,7 +801,7 @@ pub fn expr_to_ident<'a, 'b>(expr: &Expr<Typed>, cenv: &mut CGenEnv<'a, 'b>) -> 
         ExprKind::Negation(inner_expr) => {
             assert_eq!(inner_expr.type_data(), expr.type_data());
             let inner_ident = expr_to_ident(inner_expr, cenv);
-            write_assign_stmt!(cenv, expr.type_data(), "!{}", inner_ident)
+            write_assign_stmt!(cenv, expr.type_data(), "-{}", inner_ident)
         }
     }
 }
