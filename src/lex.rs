@@ -512,7 +512,7 @@ impl Token<'_> {
         self.kind
     }
 
-    pub fn span(&self) -> Span {
+    pub fn loc(&self) -> Span {
         Span::new(self.start, self.bytes.len())
     }
 

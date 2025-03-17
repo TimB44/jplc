@@ -37,7 +37,7 @@ impl Span {
     }
 
     /// Creates a new Span covering both of the given spans
-    pub fn join(&self, other: &Self) -> Self {
+    pub fn join(&self, other: Self) -> Self {
         let start = self.start.min(other.start);
         let len = ((self.start - start) + self.len).max((other.start - start) + other.len);
         Self { start, len }
@@ -92,14 +92,14 @@ mod span_tests {
     fn test_join() {
         let span1 = Span::new(1, 2); // [1, 3)
         let span2 = Span::new(2, 1); // [2, 3)
-        let joined = span1.join(&span2);
+        let joined = span1.join(span2);
         assert_eq!(joined.start(), 1);
         assert_eq!(joined.len(), 2);
         assert_eq!(joined.end(), 3);
 
         let span3 = Span::new(0, 5); // [0, 5)
         let span4 = Span::new(3, 3); // [3, 6)
-        let joined2 = span3.join(&span4);
+        let joined2 = span3.join(span4);
         assert_eq!(joined2.start(), 0);
         assert_eq!(joined2.len(), 6);
         assert_eq!(joined2.end(), 6);
@@ -109,7 +109,7 @@ mod span_tests {
     fn test_join_disjoint() {
         let span1 = Span::new(1, 1); // [1, 2)
         let span2 = Span::new(5, 1); // [5, 6)
-        let joined = span1.join(&span2);
+        let joined = span1.join(span2);
         assert_eq!(joined.start(), 1);
         assert_eq!(joined.len(), 5);
         assert_eq!(joined.end(), 6);

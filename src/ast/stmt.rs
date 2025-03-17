@@ -2,7 +2,8 @@
 use crate::{
     environment::Environment,
     lex::TokenType,
-    typecheck::{TypeState, Typed, UnTyped},
+    parse::{Displayable, SExpr},
+    typecheck::TypeVal,
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};
@@ -15,33 +16,33 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Stmt<T: TypeState = UnTyped> {
-    location: Span,
-    kind: StmtType<T>,
+pub struct Stmt {
+    loc: Span,
+    kind: StmtType,
 }
 
 #[derive(Debug, Clone)]
-pub enum StmtType<T: TypeState = UnTyped> {
-    Let(LValue, Expr<T>),
-    Assert(Expr<T>, Str),
-    Return(Expr<T>),
+pub enum StmtType {
+    Let(LValue, Expr),
+    Assert(Expr, Str),
+    Return(Expr),
 }
 
-impl Parse<Stmt> for Stmt {
-    /// Current grammar
-    /// stmt : let <lvalue> = <expr>
-    ///      | assert <expr> , <string>
-    ///      | return <expr>
-    fn parse(ts: &mut TokenStream) -> miette::Result<Self> {
+/// Current grammar
+/// stmt : let <lvalue> = <expr>
+///      | assert <expr> , <string>
+///      | return <expr>
+impl Parse for Stmt {
+    fn parse(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         match ts.peek_type() {
-            Some(TokenType::Let) => Self::parse_let(ts),
-            Some(TokenType::Assert) => Self::parse_assert(ts),
-            Some(TokenType::Return) => Self::parse_return(ts),
+            Some(TokenType::Let) => Self::parse_let(ts, env),
+            Some(TokenType::Assert) => Self::parse_assert(ts, env),
+            Some(TokenType::Return) => Self::parse_return(ts, env),
             Some(t) => Err(miette!(
                 severity = Severity::Error,
                 labels = vec![LabeledSpan::new(
                     Some(format!("expected statment, found: {}", t)),
-                    ts.peek().unwrap().span().start(),
+                    ts.peek().unwrap().loc().start(),
                     ts.peek().unwrap().bytes().len(),
                 )],
                 "Unexpected token found"
@@ -59,114 +60,83 @@ impl Parse<Stmt> for Stmt {
 }
 
 impl Stmt {
-    fn parse_let(ts: &mut TokenStream) -> miette::Result<Self> {
+    fn parse_let(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [let_token] = expect_tokens(ts, [TokenType::Let])?;
-        let l_value = LValue::parse(ts)?;
-        _ = expect_tokens(ts, [TokenType::Equals])?;
-        let expr = Expr::parse(ts)?;
-        let location = expr.location().join(&let_token.span());
+        let lvalue = LValue::parse(ts, env)?;
+        expect_tokens(ts, [TokenType::Equals])?;
+        let expr = Expr::parse(ts, env)?;
+        let location = expr.loc().join(let_token.loc());
+
+        env.add_lvalue(&lvalue, expr.type_data().clone())?;
+        if let Some(bindings) = lvalue.array_bindings() {
+            expr.expect_array_of_rank(bindings.len(), env)?;
+        }
 
         Ok(Self {
-            location,
-            kind: StmtType::Let(l_value, expr),
+            loc: location,
+            kind: StmtType::Let(lvalue, expr),
         })
     }
-    fn parse_assert(ts: &mut TokenStream) -> miette::Result<Self> {
+
+    fn parse_assert(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [assert_token] = expect_tokens(ts, [TokenType::Assert])?;
-        let expr = Expr::parse(ts)?;
-        _ = expect_tokens(ts, [TokenType::Comma])?;
-        let str_lit = Str::parse(ts)?;
-        let location = str_lit.location().join(&assert_token.span());
+        let expr = Expr::parse(ts, env)?;
+        expect_tokens(ts, [TokenType::Comma])?;
+        let str_lit = Str::parse(ts, env)?;
+        let loc = str_lit.loc().join(assert_token.loc());
+
+        expr.expect_type(&TypeVal::Bool, env)?;
 
         Ok(Self {
-            location,
+            loc,
             kind: StmtType::Assert(expr, str_lit),
         })
     }
-    fn parse_return(ts: &mut TokenStream) -> miette::Result<Self> {
+    fn parse_return(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [return_token] = expect_tokens(ts, [TokenType::Return])?;
-        let expr = Expr::parse(ts)?;
-        let location = expr.location().join(&return_token.span());
+
+        // The struct command checks that this is the correct type
+        let expr = Expr::parse(ts, env)?;
+        let location = expr.loc().join(return_token.loc());
 
         Ok(Self {
-            location,
+            loc: location,
             kind: StmtType::Return(expr),
         })
     }
 
-    pub fn to_s_expr(&self, src: &[u8]) -> String {
-        match &self.kind {
-            StmtType::Let(lvalue, expr) => format!(
-                "(LetStmt {} {})",
-                lvalue.to_s_expr(src),
-                expr.to_s_expr(src)
-            ),
-            StmtType::Assert(expr, str_lit) => format!(
-                "(AssertStmt {} {})",
-                expr.to_s_expr(src),
-                str_lit.location().as_str(src)
-            ),
-            StmtType::Return(expr) => format!("(ReturnStmt {})", expr.to_s_expr(src)),
-        }
+    pub fn loc(&self) -> Span {
+        self.loc
     }
 
-    pub fn typecheck(self, env: &mut Environment, scope_id: usize) -> miette::Result<Stmt<Typed>> {
-        match self.kind {
-            StmtType::Let(lvalue, expr) => {
-                let typed_expr = expr.typecheck(env, scope_id)?;
-                env.add_lval(&lvalue, typed_expr.type_data().clone(), scope_id)?;
-                if let Some(bindings) = lvalue.array_bindings() {
-                    typed_expr.expect_array_of_rank(bindings.len(), env)?;
-                }
-
-                Ok(Stmt {
-                    kind: StmtType::Let(lvalue, typed_expr),
-                    location: self.location,
-                })
-            }
-            StmtType::Assert(expr, msg) => {
-                let typed_expr = expr.typecheck(env, scope_id)?;
-                typed_expr.expect_type(&Typed::Bool, env)?;
-
-                Ok(Stmt {
-                    kind: StmtType::Assert(typed_expr, msg),
-                    location: self.location,
-                })
-            }
-            StmtType::Return(expr) => Ok(Stmt {
-                location: self.location,
-                kind: StmtType::Return(expr.typecheck(env, scope_id)?),
-            }),
-        }
-    }
-}
-
-impl<T: TypeState> Stmt<T> {
-    fn to_s_expr_general(&self, src: &[u8], expr_printer: impl Fn(&Expr<T>) -> String) -> String {
-        match &self.kind {
-            StmtType::Let(lvalue, expr) => {
-                format!("(LetStmt {} {})", lvalue.to_s_expr(src), expr_printer(expr))
-            }
-            StmtType::Assert(expr, str_lit) => format!(
-                "(AssertStmt {} {})",
-                expr_printer(expr),
-                str_lit.location().as_str(src)
-            ),
-            StmtType::Return(expr) => format!("(ReturnStmt {})", expr_printer(expr)),
-        }
-    }
-
-    pub fn kind(&self) -> &StmtType<T> {
+    pub fn kind(&self) -> &StmtType {
         &self.kind
     }
-
-    pub fn location(&self) -> Span {
-        self.location
-    }
 }
 
-impl Stmt<Typed> {
-    pub fn to_typed_s_expr(&self, env: &Environment) -> String {
-        self.to_s_expr_general(env.src(), |expr| expr.to_typed_s_exprsision(env))
+impl SExpr for Stmt {
+    fn to_s_expr(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        env: &Environment<'_>,
+        opt: crate::parse::SExprOptions,
+    ) -> std::fmt::Result {
+        match &self.kind {
+            StmtType::Let(lvalue, expr) => {
+                write!(
+                    f,
+                    "(LetStmt {} {})",
+                    Displayable(lvalue, env, opt),
+                    Displayable(expr, env, opt),
+                )
+            }
+            StmtType::Assert(expr, str) => write!(
+                f,
+                "(AssertStmt {} {})",
+                Displayable(expr, env, opt),
+                Displayable(str, env, opt)
+            ),
+            StmtType::Return(expr) => write!(f, "(ReturnStmt {})", Displayable(expr, env, opt)),
+        }
     }
 }

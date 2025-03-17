@@ -6,6 +6,7 @@ use cli::Mode;
 use environment::Environment;
 use lex::Lexer;
 use miette::NamedSource;
+use parse::{Displayable, SExprOptions};
 use utils::exit_with_error;
 
 pub mod cli;
@@ -39,15 +40,15 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         return;
     }
 
-    let program = match Program::new(token_stream) {
+    let mut env = Environment::new(source.as_bytes());
+
+    let program = match Program::new(token_stream, &mut env) {
         Ok(program) => program,
         Err(err) => exit_with_error(err.with_source_code(NamedSource::new(source_name, source))),
     };
 
     if mode.parse {
-        for cmd in program.commands() {
-            println!("{}", cmd.to_s_expr(source.as_bytes()))
-        }
+        println!("{}", Displayable(&program, &env, SExprOptions::Untyped));
 
         println!(
             "Compilation succeeded: parsing complete in {}ms",
@@ -56,16 +57,8 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         return;
     }
 
-    let mut env = Environment::new(source.as_bytes());
-    let typed_program = match program.typecheck(&mut env) {
-        Ok(p) => p,
-        Err(err) => exit_with_error(err.with_source_code(NamedSource::new(source_name, source))),
-    };
-
     if mode.typecheck {
-        for cmd in typed_program.commands() {
-            println!("{}", cmd.to_typed_s_exprsision(&env))
-        }
+        println!("{}", Displayable(&program, &env, SExprOptions::Typed));
 
         println!(
             "Compilation succeeded: type analysis complete in {}ms",
@@ -75,7 +68,7 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
     }
 
     if mode.c_ir {
-        generate_c(typed_program, &env);
+        generate_c(program, &env);
         println!(
             "Compilation succeeded: c code generation complete in {}ms",
             Instant::now().duration_since(start_time).as_millis()
