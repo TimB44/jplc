@@ -252,22 +252,21 @@ impl Expr {
         let [arr_token, _] = expect_tokens(ts, [TokenType::Array, TokenType::LSquare])?;
         let scope = env.new_scope();
         let looping_vars = parse_sequence(ts, env, TokenType::Comma, TokenType::RSquare)?;
-        expect_tokens(ts, [TokenType::RSquare])?;
-        let body = Self::parse(ts, env)?;
-        env.end_scope();
-        let loc = arr_token.loc().join(body.loc);
+        let [r_square_token] = expect_tokens(ts, [TokenType::RSquare])?;
+        let bindings_loc = arr_token.loc().join(r_square_token.loc());
 
         if looping_vars.is_empty() {
             return Err(miette!(
                 severity = Severity::Error,
                 labels = vec![LabeledSpan::new(
                     Some("array comprehension must have at least 1 looping variable".to_string()),
-                    loc.start(),
-                    loc.len()
+                    bindings_loc.start(),
+                    bindings_loc.len()
                 )],
                 "Can not create a zero rank array"
             ));
         }
+
         if looping_vars.len() > u8::MAX as usize {
             return Err(miette!(
                 severity = Severity::Error,
@@ -276,8 +275,8 @@ impl Expr {
                         "array comprehension can only have {} looping variables",
                         u8::MAX
                     )),
-                    loc.start(),
-                    loc.len()
+                    bindings_loc.start(),
+                    bindings_loc.len()
                 )],
                 "Can not create a zero rank array"
             ));
@@ -288,7 +287,10 @@ impl Expr {
             env.add_lvalue(&LValue::from_span(*name), TypeVal::Int)?;
         }
 
+        let body = Self::parse(ts, env)?;
+        let loc = arr_token.loc().join(body.loc);
         let type_data = TypeVal::Array(Box::new(body.type_data.clone()), looping_vars.len() as u8);
+        env.end_scope();
 
         Ok(Self {
             loc,
@@ -300,10 +302,8 @@ impl Expr {
         let [arr_token, _] = expect_tokens(ts, [TokenType::Sum, TokenType::LSquare])?;
         let scope = env.new_scope();
         let looping_vars = parse_sequence(ts, env, TokenType::Comma, TokenType::RSquare)?;
-        expect_tokens(ts, [TokenType::RSquare])?;
-        let body = Self::parse(ts, env)?;
-        env.end_scope();
-        let loc = arr_token.loc().join(body.loc);
+        let [r_square_token] = expect_tokens(ts, [TokenType::RSquare])?;
+        let loc = arr_token.loc().join(r_square_token.loc());
 
         if looping_vars.is_empty() {
             return Err(miette!(
@@ -336,12 +336,15 @@ impl Expr {
             env.add_lvalue(&LValue::from_span(*name), TypeVal::Int)?;
         }
 
+        let body = Self::parse(ts, env)?;
         body.expect_one_of_types(&[TypeVal::Int, TypeVal::Float], env)?;
+        let loc = arr_token.loc().join(body.loc);
+        env.end_scope();
 
         let type_data = body.type_data.clone();
         Ok(Self {
             loc,
-            kind: ExprKind::Sum(looping_vars, Box::new(body), 0),
+            kind: ExprKind::Sum(looping_vars, Box::new(body), scope),
             type_data,
         })
     }
