@@ -5,8 +5,6 @@ all: run
 compile: 
 	cargo build 
 
-build: compile
-
 run: 
 	./target/debug/jplc -s $(TEST) 
 

@@ -1,74 +1,90 @@
+use std::fmt;
+
 use crate::ast::types::{self, Type};
 use crate::environment::Environment;
 use std::borrow::Cow;
 use std::fmt::Write;
+use crate::parse::{Displayable, SExpr, SExprOptions};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Typed {
+pub enum TypeVal {
     Int,
     Bool,
     Float,
 
     // Type of the array and the rank
-    Array(Box<Typed>, u8),
+    Array(Box<TypeVal>, u8),
 
     // Id of struct
     Struct(usize),
     Void,
 }
 
-pub trait TypeState {}
-
-#[derive(Debug, Clone)]
-pub struct UnTyped {}
-impl TypeState for UnTyped {}
-impl TypeState for Typed {}
-
-impl Typed {
+impl TypeVal {
     pub fn as_str(&self, env: &Environment) -> String {
         match self {
-            Typed::Int => "int".to_string(),
-            Typed::Bool => "bool".to_string(),
-            Typed::Float => "float".to_string(),
-            Typed::Array(element_type, rank) => {
+            TypeVal::Int => "int".to_string(),
+            TypeVal::Bool => "bool".to_string(),
+            TypeVal::Float => "float".to_string(),
+            TypeVal::Array(element_type, rank) => {
                 format!(
                     "{}[{}]",
                     element_type.as_str(env),
                     ",".repeat((*rank as usize) - 1)
                 )
             }
-            Typed::Struct(id) => env.struct_info()[*id].name().to_string(),
-            Typed::Void => "void".to_string(),
+            TypeVal::Struct(id) => env.struct_info()[*id].name().to_string(),
+            TypeVal::Void => "void".to_string(),
         }
     }
 
-    pub fn to_typed_s_exprsision(&self, env: &Environment) -> String {
+/// Writes the type s-expression if opt is `SExprOptions::Typed`. If it is `SExprOptions::UnTyped` then it
+/// will not write anything. Note: unlike other s-expression writers this will print a space around it
+/// in order of it to be easily used for typed and untyped s-expressions
+impl SExpr for TypeVal {
+    fn to_s_expr(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        env: &Environment<'_>,
+        opt: SExprOptions,
+    ) -> fmt::Result {
+        if let SExprOptions::Untyped = opt {
+            return Ok(());
+        }
+
         match self {
-            Typed::Int => "IntType".to_string(),
-            Typed::Bool => "BoolType".to_string(),
-            Typed::Float => "FloatType".to_string(),
-            Typed::Array(typed, rank) => {
-                format!("ArrayType ({}) {}", typed.to_typed_s_exprsision(env), rank)
+            TypeVal::Int => write!(f, " (IntType)"),
+            TypeVal::Bool => write!(f, " (BoolType)"),
+            TypeVal::Float => write!(f, " (FloatType)"),
+            TypeVal::Array(typed, rank) => {
+                write!(
+                    f,
+                    " (ArrayType{} {})",
+                    Displayable(typed.as_ref(), env, opt),
+                    rank
+                )
             }
-            Typed::Struct(id) => format!("StructType {}", env.get_struct_id(*id).name()),
-            Typed::Void => "VoidType".to_string(),
+            TypeVal::Struct(id) => write!(f, " (StructType {})", env.get_struct_id(*id).name()),
+            TypeVal::Void => write!(f, " (VoidType)"),
         }
     }
+}
 
+impl TypeVal {
     pub fn from_ast_type(t: &Type, env: &Environment) -> miette::Result<Self> {
         Ok(match t.kind() {
-            types::TypeKind::Int => Typed::Int,
-            types::TypeKind::Bool => Typed::Bool,
-            types::TypeKind::Float => Typed::Float,
+            types::TypeKind::Int => TypeVal::Int,
+            types::TypeKind::Bool => TypeVal::Bool,
+            types::TypeKind::Float => TypeVal::Float,
             types::TypeKind::Array(inner, rank) => {
-                Typed::Array(Box::new(Self::from_ast_type(inner, env)?), *rank)
+                TypeVal::Array(Box::new(Self::from_ast_type(inner, env)?), *rank)
             }
             types::TypeKind::Struct => {
                 let id = env.get_struct(t.location())?.id();
 
-                Typed::Struct(id)
+                TypeVal::Struct(id)
             }
-            types::TypeKind::Void => Typed::Void,
+            types::TypeKind::Void => TypeVal::Void,
         })
     }
 

@@ -1,8 +1,13 @@
 //! This module defines the types and functions to used to represent types in
 //! JPL and in the ast
 
-use super::{next_match, Parse};
-use crate::{lex::TokenType, parse::expect_tokens, utils::Span};
+use super::{next_match, Parse, TokenStream};
+use crate::{
+    environment::Environment,
+    lex::TokenType,
+    parse::{expect_tokens, Displayable, SExpr},
+    utils::Span,
+};
 use miette::{miette, LabeledSpan, Severity};
 
 /// Represents a type in a JPL program. Currently uses the following grammer
@@ -34,8 +39,8 @@ pub enum TypeKind {
     Void,
 }
 
-impl Parse<Type> for Type {
-    fn parse(ts: &mut super::TokenStream) -> miette::Result<Self> {
+impl Parse for Type {
+    fn parse(ts: &mut TokenStream, _: &mut Environment) -> miette::Result<Self> {
         let mut current_type = match ts.peek_type() {
             Some(TokenType::Int) => Self::parse_int(ts)?,
             Some(TokenType::Bool) => Self::parse_bool(ts)?,
@@ -48,7 +53,7 @@ impl Parse<Type> for Type {
                     severity = Severity::Error,
                     labels = vec![LabeledSpan::new(
                         Some(format!("expected Type, found: {}", t)),
-                        ts.peek().unwrap().span().start(),
+                        ts.peek().unwrap().loc().start(),
                         ts.peek().unwrap().bytes().len(),
                     )],
                     "Unexpected token found"
@@ -75,7 +80,7 @@ impl Parse<Type> for Type {
                 _ = expect_tokens(ts, [TokenType::Comma])?;
             }
             let [r_square] = expect_tokens(ts, [TokenType::RSquare])?;
-            let location = r_square.span().join(&current_type.location);
+            let location = r_square.loc().join(current_type.location);
             current_type = Self {
                 kind: TypeKind::Array(Box::new(current_type), rank),
                 location,
@@ -86,39 +91,39 @@ impl Parse<Type> for Type {
     }
 }
 impl Type {
-    fn parse_int(ts: &mut super::TokenStream) -> miette::Result<Self> {
+    fn parse_int(ts: &mut TokenStream) -> miette::Result<Self> {
         let [int_token] = expect_tokens(ts, [TokenType::Int])?;
         Ok(Self {
-            location: int_token.span(),
+            location: int_token.loc(),
             kind: TypeKind::Int,
         })
     }
-    fn parse_bool(ts: &mut super::TokenStream) -> miette::Result<Self> {
+    fn parse_bool(ts: &mut TokenStream) -> miette::Result<Self> {
         let [bool_token] = expect_tokens(ts, [TokenType::Bool])?;
         Ok(Self {
-            location: bool_token.span(),
+            location: bool_token.loc(),
             kind: TypeKind::Bool,
         })
     }
-    fn parse_float(ts: &mut super::TokenStream) -> miette::Result<Self> {
+    fn parse_float(ts: &mut TokenStream) -> miette::Result<Self> {
         let [float_token] = expect_tokens(ts, [TokenType::Float])?;
         Ok(Self {
-            location: float_token.span(),
+            location: float_token.loc(),
             kind: TypeKind::Float,
         })
     }
 
-    fn parse_struct(ts: &mut super::TokenStream) -> miette::Result<Self> {
+    fn parse_struct(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var_token] = expect_tokens(ts, [TokenType::Variable])?;
         Ok(Self {
-            location: var_token.span(),
+            location: var_token.loc(),
             kind: TypeKind::Struct,
         })
     }
-    fn parse_void(ts: &mut super::TokenStream) -> miette::Result<Self> {
+    fn parse_void(ts: &mut TokenStream) -> miette::Result<Self> {
         let [void_token] = expect_tokens(ts, [TokenType::Void])?;
         Ok(Self {
-            location: void_token.span(),
+            location: void_token.loc(),
             kind: TypeKind::Void,
         })
     }
@@ -127,20 +132,32 @@ impl Type {
         self.location
     }
 
-    pub fn to_s_expr(&self, src: &[u8]) -> String {
-        match &self.kind {
-            TypeKind::Int => "(IntType)".to_string(),
-            TypeKind::Bool => "(BoolType)".to_string(),
-            TypeKind::Float => "(FloatType)".to_string(),
-            TypeKind::Struct => format!("(StructType {})", self.location.as_str(src)),
-            TypeKind::Void => "(VoidType)".to_string(),
-            TypeKind::Array(expr, rank) => {
-                format!("(ArrayType {} {})", expr.to_s_expr(src), rank)
-            }
-        }
-    }
-
     pub fn kind(&self) -> &TypeKind {
         &self.kind
+    }
+}
+
+impl SExpr for Type {
+    fn to_s_expr(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        env: &crate::environment::Environment<'_>,
+        opt: crate::parse::SExprOptions,
+    ) -> std::fmt::Result {
+        match &self.kind {
+            TypeKind::Int => write!(f, "(IntType)"),
+            TypeKind::Bool => write!(f, "(BoolType)"),
+            TypeKind::Float => write!(f, "(FloatType)"),
+            TypeKind::Struct => write!(f, "(StructType {})", self.location.as_str(env.src())),
+            TypeKind::Void => write!(f, "(VoidType)"),
+            TypeKind::Array(element_type, rank) => {
+                write!(
+                    f,
+                    "(ArrayType {} {})",
+                    Displayable(element_type.as_ref(), env, opt),
+                    rank
+                )
+            }
+        }
     }
 }

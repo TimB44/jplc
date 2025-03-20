@@ -5,20 +5,65 @@
 //! - `cmd`: Command parsing
 //! - `exrp`: Expression parsing
 //! - `types`: JPL variable types (WIP)
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    fmt::{self, Display, Formatter, Write},
+};
 
-use crate::lex::{Lexer, Token, TokenType};
+use crate::{
+    environment::Environment,
+    lex::{Lexer, Token, TokenType},
+};
 use miette::{miette, LabeledSpan, Severity};
 
 /// Something that can be parsed from a token stream
-pub(super) trait Parse<T> {
-    fn parse(ts: &mut TokenStream<'_>) -> miette::Result<T>;
+pub(super) trait Parse: Sized {
+    fn parse(ts: &mut TokenStream<'_>, env: &mut Environment<'_>) -> miette::Result<Self>;
+}
+
+pub trait SExpr {
+    fn to_s_expr(
+        &self,
+        f: &mut Formatter<'_>,
+        env: &Environment<'_>,
+        opt: SExprOptions,
+    ) -> fmt::Result;
+}
+
+pub struct Displayable<'a, 'b, T>(pub &'a T, pub &'a Environment<'b>, pub SExprOptions);
+
+impl<'a, 'b, T: SExpr> Display for Displayable<'a, 'b, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0.to_s_expr(f, &self.1, self.2)
+    }
+}
+
+impl<'a, 'b, T: SExpr> Display for Displayable<'a, 'b, Box<[T]>> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for (i, item) in self.0.iter().enumerate() {
+            write!(f, " {}", Displayable(item, &self.1, self.2))?;
+        }
+        Ok(())
+    }
+}
+
+//impl<'a, 'b, T: SExpr> Display for Displayable<'a, 'b, Box<[T]>> {
+//    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//        write!(f, "{}", Displayable(&*self.0, &self.1, self.2))
+//    }
+//}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SExprOptions {
+    Untyped,
+    Typed,
 }
 
 /// Parses P delimiter ... P and returns a boxed slice of P
 /// Does not consume the terminating token or delimiter
-pub fn parse_sequence<P: Parse<P>>(
+pub fn parse_sequence<P: Parse>(
     ts: &mut TokenStream,
+    env: &mut Environment,
     delimiter: TokenType,
     terminator: TokenType,
 ) -> miette::Result<Box<[P]>> {
@@ -30,7 +75,7 @@ pub fn parse_sequence<P: Parse<P>>(
     }
 
     loop {
-        items.push(P::parse(ts)?);
+        items.push(P::parse(ts, env)?);
         if ts.peek_type() != Some(delimiter) {
             break;
         }
@@ -42,8 +87,9 @@ pub fn parse_sequence<P: Parse<P>>(
 
 /// Parses P delimiter ... and returns a boxed slice of P
 /// Does not consume the terminating token
-pub fn parse_sequence_trailing<P: Parse<P>>(
+pub fn parse_sequence_trailing<P: Parse>(
     ts: &mut TokenStream,
+    env: &mut Environment,
     delimiter: TokenType,
     terminator: TokenType,
 ) -> miette::Result<Box<[P]>> {
@@ -55,7 +101,7 @@ pub fn parse_sequence_trailing<P: Parse<P>>(
     }
 
     while ts.peek_type() != Some(terminator) {
-        items.push(P::parse(ts)?);
+        items.push(P::parse(ts, env)?);
         _ = expect_tokens(ts, [delimiter])?;
     }
 
