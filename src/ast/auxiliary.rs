@@ -183,7 +183,7 @@ impl SExpr for Binding {
     ) -> std::fmt::Result {
         write!(
             f,
-            "({} {})",
+            "{} {}",
             Displayable(&self.lvalue, env, opt),
             Displayable(&self.var_type, env, opt)
         )

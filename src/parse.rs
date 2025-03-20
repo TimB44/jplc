@@ -41,10 +41,7 @@ impl<'a, 'b, T: SExpr> Display for Displayable<'a, 'b, T> {
 impl<'a, 'b, T: SExpr> Display for Displayable<'a, 'b, Box<[T]>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for (i, item) in self.0.iter().enumerate() {
-            if i != 0 {
-                f.write_char(' ')?;
-            }
-            write!(f, "{}", Displayable(item, &self.1, self.2))?;
+            write!(f, " {}", Displayable(item, &self.1, self.2))?;
         }
         Ok(())
     }

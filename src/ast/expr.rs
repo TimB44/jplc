@@ -1,15 +1,15 @@
 // TODO: merge typechecking and parsing
 
 //! Defines the types of functions to parse all kinds of expressions in JPL
-use std::fmt::Write;
+use std::fmt::{Formatter, Write};
 
 use super::{super::parse::parse_sequence, auxiliary::LoopVar, expect_tokens, Parse, TokenStream};
 use crate::{
     ast::auxiliary::LValue,
     environment::Environment,
     lex::TokenType,
-    parse::{Displayable, SExpr},
-    typecheck::{TypeVal, UnTyped},
+    parse::{Displayable, SExpr, SExprOptions},
+    typecheck::TypeVal,
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};
@@ -423,12 +423,12 @@ impl Expr {
     }
 
     fn parse_unary(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
-        let (expr_type, ty): (fn(_) -> _, TypeVal) = match ts.peek() {
+        let (expr_kind, ty): (fn(_) -> _, &[TypeVal]) = match ts.peek() {
             Some(t) if t.kind() == TokenType::Op && t.bytes() == "!" => {
-                (ExprKind::Not, TypeVal::Int)
+                (ExprKind::Not, &[TypeVal::Bool])
             }
             Some(t) if t.kind() == TokenType::Op && t.bytes() == "-" => {
-                (ExprKind::Negation, TypeVal::Bool)
+                (ExprKind::Negation, &[TypeVal::Int, TypeVal::Float])
             }
             Some(t) if t.kind() == TokenType::Array => return Expr::parse_array_comp(ts, env),
             Some(t) if t.kind() == TokenType::Sum => return Expr::parse_sum(ts, env),
@@ -439,12 +439,13 @@ impl Expr {
         let [unary_op_token] = expect_tokens(ts, [TokenType::Op])?;
         let inner = Self::parse_unary(ts, env)?;
         let loc = unary_op_token.loc().join(inner.loc);
-        inner.expect_type(&ty, env)?;
+        let type_data = inner.type_data.clone();
+        inner.expect_one_of_types(&ty, env)?;
 
         Ok(Self {
             loc,
-            kind: expr_type(Box::new(inner)),
-            type_data: ty,
+            kind: expr_kind(Box::new(inner)),
+            type_data,
         })
     }
 
@@ -859,492 +860,19 @@ impl Expr {
             )),
         }
     }
-
-    // Add case for compaing bools
-    //fn typecheck_cmp_binop(
-    //    operands: (Expr, Expr),
-    //    varient: fn(Box<(Expr<TypeVal>, Expr<TypeVal>)>) -> ExprKind<TypeVal>,
-    //    location: Span,
-    //    env: &mut Environment,
-    //    scope_id: usize,
-    //) -> miette::Result<Expr<TypeVal>> {
-    //    let (lhs, rhs) = operands;
-    //    let typed_lhs = lhs.typecheck(env, scope_id)?;
-    //    let typed_rhs = rhs.typecheck(env, scope_id)?;
-    //
-    //    typed_lhs.expect_one_of_types(&[TypeVal::Int, TypeVal::Float], env)?;
-    //    typed_rhs.expect_type(&typed_lhs.type_data, env)?;
-    //
-    //    Ok(Expr {
-    //        loc: location,
-    //        kind: varient(Box::new((typed_lhs, typed_rhs))),
-    //        type_data: TypeVal::Bool,
-    //    })
-    //}
-    // Add case for compaing bools
-    //fn typecheck_eq_binop(
-    //    operands: (Expr, Expr),
-    //    varient: fn(Box<(Expr<TypeVal>, Expr<TypeVal>)>) -> ExprKind<TypeVal>,
-    //    location: Span,
-    //    env: &mut Environment,
-    //    scope_id: usize,
-    //) -> miette::Result<Expr<TypeVal>> {
-    //    let (lhs, rhs) = operands;
-    //    let typed_lhs = lhs.typecheck(env, scope_id)?;
-    //    let typed_rhs = rhs.typecheck(env, scope_id)?;
-    //
-    //    typed_lhs.expect_one_of_types(&[TypeVal::Int, TypeVal::Float, TypeVal::Bool], env)?;
-    //    typed_rhs.expect_type(&typed_lhs.type_data, env)?;
-    //
-    //    Ok(Expr {
-    //        loc: location,
-    //        kind: varient(Box::new((typed_lhs, typed_rhs))),
-    //        type_data: TypeVal::Bool,
-    //    })
-    //}
-    //fn typecheck_numerical_binop(
-    //    operands: (Expr, Expr),
-    //    varient: fn(Box<(Expr<TypeVal>, Expr<TypeVal>)>) -> ExprKind<TypeVal>,
-    //    location: Span,
-    //    env: &mut Environment,
-    //    scope_id: usize,
-    //) -> miette::Result<Expr<TypeVal>> {
-    //    let (lhs, rhs) = operands;
-    //    let typed_lhs = lhs.typecheck(env, scope_id)?;
-    //    let typed_rhs = rhs.typecheck(env, scope_id)?;
-    //
-    //    typed_lhs.expect_one_of_types(&[TypeVal::Int, TypeVal::Float], env)?;
-    //    let output_type = typed_lhs.type_data.clone();
-    //    typed_rhs.expect_type(&output_type, env)?;
-    //
-    //    Ok(Expr {
-    //        loc: location,
-    //        kind: varient(Box::new((typed_lhs, typed_rhs))),
-    //        type_data: output_type,
-    //    })
-    //}
-
-    //pub fn typecheck(
-    //    self,
-    //    env: &mut Environment,
-    //    scope_id: usize,
-    //) -> miette::Result<Expr<TypeVal>> {
-    //    Ok(match self.kind {
-    //        ExprKind::ArrayLit(exprs) => {
-    //            if exprs.is_empty() {
-    //                return Err(miette!(
-    //                    severity = Severity::Error,
-    //                    labels = vec![LabeledSpan::new(
-    //                        Some("array literals can not be empty".to_string()),
-    //                        self.loc.start(),
-    //                        self.loc.len()
-    //                    )],
-    //                    "Invalid array literal"
-    //                ));
-    //            }
-    //
-    //            // TODO: May be able to remove the to_vec
-    //            let typed_exprs = exprs
-    //                .to_vec()
-    //                .into_iter()
-    //                .map(|e| e.typecheck(env, scope_id))
-    //                .collect::<Result<Vec<_>, _>>()?
-    //                .into_boxed_slice();
-    //
-    //            let element_type = typed_exprs[0].type_data.clone();
-    //            typed_exprs
-    //                .iter()
-    //                .skip(1)
-    //                .map(|e| e.expect_type(&element_type, env))
-    //                .collect::<Result<Vec<()>, _>>()?;
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::ArrayLit(typed_exprs),
-    //                type_data: TypeVal::Array(Box::new(element_type), 1),
-    //            }
-    //        }
-    //        ExprKind::StructInit(span, exprs) => {
-    //            {
-    //                let info = env.get_struct(span)?;
-    //                if exprs.len() != info.fields().len() {
-    //                    return Err(miette!(
-    //                        severity = Severity::Error,
-    //                        labels = vec![LabeledSpan::new(
-    //                            Some(format!(
-    //                                "Expected {} fields, found {}",
-    //                                info.fields().len(),
-    //                                exprs.len()
-    //                            )),
-    //                            self.loc.start(),
-    //                            self.loc.len(),
-    //                        )],
-    //                        "Incorrect number of fields for struct: {}",
-    //                        span.as_str(env.src())
-    //                    ));
-    //                }
-    //            }
-    //
-    //            // Not ideal but must be done to make the borrow checker happy
-    //            let mut checked_exprs = Vec::with_capacity(exprs.len());
-    //            for (i, expr) in exprs.to_vec().into_iter().enumerate() {
-    //                let typed = expr.typecheck(env, scope_id)?;
-    //                typed.expect_type(&env.get_struct(span)?.fields()[i].1, env)?;
-    //                checked_exprs.push(typed);
-    //            }
-    //
-    //            let checked_exprs = checked_exprs.into_boxed_slice();
-    //
-    //            let info = env.get_struct(span)?;
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::StructInit(span, checked_exprs),
-    //                type_data: TypeVal::Struct(info.id()),
-    //            }
-    //        }
-    //        ExprKind::FunctionCall(fn_name, exprs) => {
-    //            let fn_info = env.get_function(fn_name)?;
-    //            if exprs.len() != fn_info.args().len() {
-    //                return Err(miette!(
-    //                    severity = Severity::Error,
-    //                    labels = vec![LabeledSpan::new(
-    //                        Some(format!(
-    //                            "Expected {} arguments, found {}",
-    //                            fn_info.args().len(),
-    //                            exprs.len(),
-    //                        )),
-    //                        self.loc.start(),
-    //                        self.loc.len(),
-    //                    )],
-    //                    "Incorrect number of arguments for function: {}",
-    //                    fn_name.as_str(env.src())
-    //                ));
-    //            }
-    //
-    //            let typed_args = exprs
-    //                .to_vec()
-    //                .into_iter()
-    //                .map(|e| e.typecheck(env, scope_id))
-    //                .collect::<Result<Vec<_>, _>>()?
-    //                .into_boxed_slice();
-    //
-    //            let fn_info = env.get_function(fn_name)?;
-    //
-    //            for (arg, expected_type) in typed_args.iter().zip(fn_info.args()) {
-    //                arg.expect_type(expected_type, env)?;
-    //            }
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::FunctionCall(fn_name, typed_args),
-    //                type_data: fn_info.ret().clone(),
-    //            }
-    //        }
-    //        ExprKind::FieldAccess(expr, span) => {
-    //            let typed_struct = expr.typecheck(env, scope_id)?;
-    //            let id = match typed_struct.type_data {
-    //                TypeVal::Struct(id) => id,
-    //                _ => 0,
-    //            };
-    //
-    //            typed_struct.expect_type(&TypeVal::Struct(id), env)?;
-    //
-    //            let field_name = span.as_str(env.src());
-    //            let info = env.get_struct_id(id);
-    //            let field_type = info
-    //                .fields()
-    //                .iter()
-    //                .find(|(name, _)| *name == field_name)
-    //                .map(|(_, t)| t)
-    //                .ok_or_else(|| {
-    //                    miette!(
-    //                        severity = Severity::Error,
-    //                        labels = vec![LabeledSpan::new(
-    //                            Some(format!(
-    //                                "no field named: {} found for struct: {}",
-    //                                field_name,
-    //                                info.name()
-    //                            )),
-    //                            span.start(),
-    //                            span.len(),
-    //                        )],
-    //                        "Struct field name not changed"
-    //                    )
-    //                })?
-    //                .clone();
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::FieldAccess(Box::new(typed_struct), span),
-    //                type_data: field_type,
-    //            }
-    //        }
-    //
-    //        ExprKind::ArrayIndex(arr_expr, indices) => {
-    //            let arr_expr_typed = arr_expr.typecheck(env, scope_id)?;
-    //            let (element_type, rank) = match &arr_expr_typed.type_data {
-    //                TypeVal::Array(element_type, rank) => (element_type, rank),
-    //                t => {
-    //                    return Err(miette!(
-    //                        severity = Severity::Error,
-    //                        labels = vec![LabeledSpan::new(
-    //                            Some(format!(
-    //                                "Expected type array type, found: {}",
-    //                                t.as_str(env)
-    //                            )),
-    //                            arr_expr_typed.loc.start(),
-    //                            arr_expr_typed.loc.len()
-    //                        )],
-    //                        "Can only index arrays"
-    //                    ));
-    //                }
-    //            };
-    //
-    //            if *rank as usize != indices.len() {
-    //                return Err(miette!(
-    //                    severity = Severity::Error,
-    //                    labels = vec![LabeledSpan::new(
-    //                        Some(format!("Expected {} indices found {}", rank, indices.len())),
-    //                        self.loc.start(),
-    //                        self.loc.len()
-    //                    )],
-    //                    "Incorrect amount of indices"
-    //                ));
-    //            }
-    //
-    //            let typed_exprs = indices
-    //                .to_vec()
-    //                .into_iter()
-    //                .map(|e| e.typecheck(env, scope_id))
-    //                .collect::<Result<Vec<Expr>, _>>()?
-    //                .into_boxed_slice();
-    //
-    //            typed_exprs
-    //                .iter()
-    //                .map(|e| e.expect_type(&TypeVal::Int, env))
-    //                .collect::<Result<Vec<()>, _>>()?;
-    //
-    //            let element_type = *element_type.clone();
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::ArrayIndex(Box::new(arr_expr_typed), typed_exprs),
-    //                type_data: element_type,
-    //            }
-    //        }
-    //
-    //        ExprKind::If(if_expr) => {
-    //            let (cond, true_branch, false_branch) = *if_expr;
-    //            let typed_cond = cond.typecheck(env, scope_id)?;
-    //            let typed_true_branch = true_branch.typecheck(env, scope_id)?;
-    //            let typed_false_branch = false_branch.typecheck(env, scope_id)?;
-    //            typed_cond.expect_type(&TypeVal::Bool, env)?;
-    //            let branch_type = &typed_true_branch.type_data.clone();
-    //
-    //            typed_false_branch.expect_type(branch_type, env)?;
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::If(Box::new((
-    //                    typed_cond,
-    //                    typed_true_branch,
-    //                    typed_false_branch,
-    //                ))),
-    //                type_data: branch_type.clone(),
-    //            }
-    //        }
-    //        ExprKind::ArrayComp(vars, expr, _) => {
-    //            env.new_scope();
-    //            env.end_scope();
-    //            let mut typed_vars = Vec::with_capacity(vars.len());
-    //
-    //            if vars.is_empty() {
-    //                return Err(miette!(
-    //                    severity = Severity::Error,
-    //                    labels = vec![LabeledSpan::new(
-    //                        Some("array comprehension must have at least 1 binding".to_string()),
-    //                        self.loc.start(),
-    //                        self.loc.len()
-    //                    )],
-    //                    "Can not create a zero rank array"
-    //                ));
-    //            }
-    //
-    //            for (name, val) in vars {
-    //                let typed = val.typecheck(env, scope_id)?;
-    //                typed.expect_type(&TypeVal::Int, env)?;
-    //                env.add_lvalue(&LValue::from_span(name), TypeVal::Int, inner_scope)?;
-    //                typed_vars.push((name, typed));
-    //            }
-    //
-    //            let body = expr.typecheck(env, inner_scope)?;
-    //            let type_data =
-    //                TypeVal::Array(Box::new(body.type_data.clone()), typed_vars.len() as u8);
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::ArrayComp(
-    //                    typed_vars.into_boxed_slice(),
-    //                    Box::new(body),
-    //                    inner_scope,
-    //                ),
-    //                type_data,
-    //            }
-    //        }
-    //        ExprKind::Sum(vars, expr, _) => {
-    //            let inner_scope = env.new_scope(scope_id);
-    //            let mut typed_vars = Vec::with_capacity(vars.len());
-    //
-    //            if vars.is_empty() {
-    //                return Err(miette!(
-    //                    severity = Severity::Error,
-    //                    labels = vec![LabeledSpan::new(
-    //                        Some("sum comprehension must have at least 1 binding".to_string()),
-    //                        self.loc.start(),
-    //                        self.loc.len()
-    //                    )],
-    //                    "Illegal sum expresion"
-    //                ));
-    //            }
-    //
-    //            for (name, val) in vars {
-    //                let typed = val.typecheck(env, scope_id)?;
-    //                typed.expect_type(&TypeVal::Int, env)?;
-    //                env.add_lvalue(&LValue::from_span(name), TypeVal::Int, inner_scope)?;
-    //                typed_vars.push((name, typed));
-    //            }
-    //
-    //            let body = expr.typecheck(env, inner_scope)?;
-    //            body.expect_one_of_types(&[TypeVal::Int, TypeVal::Float], env)?;
-    //            let type_data = body.type_data.clone();
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::Sum(typed_vars.into_boxed_slice(), Box::new(body), inner_scope),
-    //                type_data,
-    //            }
-    //        }
-    //        ExprKind::And(operands) => {
-    //            let (lhs, rhs) = *operands;
-    //            let typed_lhs = lhs.typecheck(env, scope_id)?;
-    //            let typed_rhs = rhs.typecheck(env, scope_id)?;
-    //            typed_lhs.expect_type(&TypeVal::Bool, env)?;
-    //            typed_rhs.expect_type(&TypeVal::Bool, env)?;
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::And(Box::new((typed_lhs, typed_rhs))),
-    //                type_data: TypeVal::Bool,
-    //            }
-    //        }
-    //        ExprKind::Or(operands) => {
-    //            let (lhs, rhs) = *operands;
-    //            let typed_lhs = lhs.typecheck(env, scope_id)?;
-    //            let typed_rhs = rhs.typecheck(env, scope_id)?;
-    //            typed_lhs.expect_type(&TypeVal::Bool, env)?;
-    //            typed_rhs.expect_type(&TypeVal::Bool, env)?;
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::Or(Box::new((typed_lhs, typed_rhs))),
-    //                type_data: TypeVal::Bool,
-    //            }
-    //        }
-    //
-    //        ExprKind::LessThan(operands) => {
-    //            Self::typecheck_cmp_binop(*operands, ExprKind::LessThan, self.loc, env, scope_id)?
-    //        }
-    //        ExprKind::GreaterThan(operands) => Self::typecheck_cmp_binop(
-    //            *operands,
-    //            ExprKind::GreaterThan,
-    //            self.loc,
-    //            env,
-    //            scope_id,
-    //        )?,
-    //        ExprKind::LessThanEq(operands) => {
-    //            Self::typecheck_cmp_binop(*operands, ExprKind::LessThanEq, self.loc, env, scope_id)?
-    //        }
-    //        ExprKind::GreaterThanEq(operands) => Self::typecheck_cmp_binop(
-    //            *operands,
-    //            ExprKind::GreaterThanEq,
-    //            self.loc,
-    //            env,
-    //            scope_id,
-    //        )?,
-    //        ExprKind::Eq(operands) => {
-    //            Self::typecheck_eq_binop(*operands, ExprKind::Eq, self.loc, env, scope_id)?
-    //        }
-    //        ExprKind::NotEq(operands) => {
-    //            Self::typecheck_eq_binop(*operands, ExprKind::NotEq, self.loc, env, scope_id)?
-    //        }
-    //        ExprKind::Add(operands) => {
-    //            Self::typecheck_numerical_binop(*operands, ExprKind::Add, self.loc, env, scope_id)?
-    //        }
-    //        ExprKind::Minus(operands) => Self::typecheck_numerical_binop(
-    //            *operands,
-    //            ExprKind::Minus,
-    //            self.loc,
-    //            env,
-    //            scope_id,
-    //        )?,
-    //        ExprKind::Mulitply(operands) => Self::typecheck_numerical_binop(
-    //            *operands,
-    //            ExprKind::Mulitply,
-    //            self.loc,
-    //            env,
-    //            scope_id,
-    //        )?,
-    //        ExprKind::Divide(operands) => Self::typecheck_numerical_binop(
-    //            *operands,
-    //            ExprKind::Divide,
-    //            self.loc,
-    //            env,
-    //            scope_id,
-    //        )?,
-    //        ExprKind::Modulo(operands) => Self::typecheck_numerical_binop(
-    //            *operands,
-    //            ExprKind::Modulo,
-    //            self.loc,
-    //            env,
-    //            scope_id,
-    //        )?,
-    //        ExprKind::Not(expr) => {
-    //            let typed_expr = expr.typecheck(env, scope_id)?;
-    //            typed_expr.expect_type(&TypeVal::Bool, env)?;
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::Not(Box::new(typed_expr)),
-    //                type_data: TypeVal::Bool,
-    //            }
-    //        }
-    //        ExprKind::Negation(expr) => {
-    //            let typed_expr = expr.typecheck(env, scope_id)?;
-    //            typed_expr.expect_one_of_types(&[TypeVal::Int, TypeVal::Float], env)?;
-    //            let output_type = typed_expr.type_data.clone();
-    //
-    //            Expr {
-    //                loc: self.loc,
-    //                kind: ExprKind::Negation(Box::new(typed_expr)),
-    //                type_data: output_type,
-    //            }
-    //        }
-    //    })
-    //}
 }
 
 impl SExpr for Expr {
     fn to_s_expr(
         &self,
-        f: &mut std::fmt::Formatter<'_>,
+        f: &mut Formatter<'_>,
         env: &Environment<'_>,
-        opt: crate::parse::SExprOptions,
+        opt: SExprOptions,
     ) -> std::fmt::Result {
         let ty = Displayable(&self.type_data, env, opt);
         match &self.kind {
             ExprKind::IntLit(val) => write!(f, "(IntExpr{} {})", ty, val),
-            ExprKind::FloatLit(val) => write!(f, "(FloatExpr{} {}.0)", ty, val.trunc()),
+            ExprKind::FloatLit(val) => write!(f, "(FloatExpr{} {})", ty, val.trunc()),
             ExprKind::True => write!(f, "(TrueExpr{})", ty),
             ExprKind::False => write!(f, "(FalseExpr{})", ty),
             ExprKind::Var => write!(f, "(VarExpr{} {})", ty, self.loc.as_str(env.src())),
@@ -1352,23 +880,23 @@ impl SExpr for Expr {
             ExprKind::ArrayLit(items) => {
                 write!(
                     f,
-                    "(ArrayLiteralExpr{} {})",
+                    "(ArrayLiteralExpr{}{})",
                     ty,
                     Displayable(items, env, opt),
                 )
             }
-            ExprKind::StructInit(field_name, fields) => {
+            ExprKind::StructInit(struct_name, fields) => {
                 write!(
                     f,
-                    "(StructLiteralExpr{} {} {})",
+                    "(StructLiteralExpr{} {}{})",
                     ty,
+                    struct_name.as_str(env.src()),
                     Displayable(fields, env, opt),
-                    field_name.as_str(env.src())
                 )
             }
             ExprKind::FunctionCall(span, args) => write!(
                 f,
-                "(CallExpr{} {} {})",
+                "(CallExpr{} {}{})",
                 ty,
                 span.as_str(env.src()),
                 Displayable(args, env, opt),
@@ -1385,7 +913,7 @@ impl SExpr for Expr {
             ExprKind::ArrayIndex(expr, indices) => {
                 write!(
                     f,
-                    "(ArrayIndexExpr{} {} {})",
+                    "(ArrayIndexExpr{} {}{})",
                     ty,
                     Displayable(expr.as_ref(), env, opt),
                     Displayable(indices, env, opt)
@@ -1402,7 +930,7 @@ impl SExpr for Expr {
             ExprKind::ArrayComp(args, expr, _) => {
                 write!(
                     f,
-                    "(ArrayLoopExpr{} {} {})",
+                    "(ArrayLoopExpr{}{} {})",
                     ty,
                     Displayable(args, env, opt),
                     Displayable(expr.as_ref(), env, opt),
@@ -1411,7 +939,7 @@ impl SExpr for Expr {
             ExprKind::Sum(args, expr, _) => {
                 write!(
                     f,
-                    "(SumLoopExpr{} {} {})",
+                    "(SumLoopExpr{}{} {})",
                     ty,
                     Displayable(args, env, opt),
                     Displayable(expr.as_ref(), env, opt),
@@ -1524,168 +1052,3 @@ impl SExpr for Expr {
         }
     }
 }
-
-//impl Expr {
-//    // TODO fix this mess
-//    pub fn to_s_expr_general(
-//        &self,
-//        src: &[u8],
-//        expr_printer: Option<impl Fn(&Expr) -> String>,
-//    ) -> String {
-//        let expr_printer: Box<dyn Fn(&Expr) -> String> = match expr_printer {
-//            Some(expr_printer) => Box::new(expr_printer),
-//            None => Box::new(|e: &Expr| e.to_s_expr_general(src, None::<fn(&Expr) -> String>)),
-//        };
-//
-//        match &self.kind {
-//            ExprKind::IntLit(val) => format!("(IntExpr {})", val),
-//            ExprKind::FloatLit(val) => format!("(FloatExpr {:.0})", val.trunc()),
-//            ExprKind::True => "(TrueExpr)".to_string(),
-//            ExprKind::False => "(FalseExpr)".to_string(),
-//            ExprKind::Var => format!("(VarExpr {})", self.loc.as_str(src)),
-//            ExprKind::Void => "(VoidExpr)".to_string(),
-//            ExprKind::ArrayLit(items) => {
-//                let mut s_expr = "(ArrayLiteralExpr".to_string();
-//                for item in items {
-//                    s_expr.push(' ');
-//                    s_expr.push_str(&expr_printer(item));
-//                }
-//                s_expr.push(')');
-//                s_expr
-//            }
-//            ExprKind::StructInit(span, fields) => {
-//                let mut s_expr = format!("(StructLiteralExpr {}", span.as_str(src));
-//
-//                for expr in fields {
-//                    s_expr.push(' ');
-//                    s_expr.push_str(&expr_printer(expr));
-//                }
-//
-//                s_expr.push(')');
-//
-//                s_expr
-//            }
-//            ExprKind::FunctionCall(span, args) => {
-//                let mut s_expr = format!("(CallExpr {}", span.as_str(src));
-//                for arg in args {
-//                    s_expr.push(' ');
-//                    s_expr.push_str(&expr_printer(arg));
-//                }
-//                s_expr.push(')');
-//                s_expr
-//            }
-//            ExprKind::FieldAccess(expr, span) => {
-//                format!("(DotExpr {} {})", &expr_printer(expr), span.as_str(src))
-//            }
-//            ExprKind::ArrayIndex(expr, indices) => {
-//                let mut s_expr = format!("(ArrayIndexExpr {}", expr_printer(expr));
-//                for index in indices {
-//                    s_expr.push(' ');
-//                    s_expr.push_str(&expr_printer(index));
-//                }
-//                s_expr.push(')');
-//                s_expr
-//            }
-//            ExprKind::If(if_stmt) => format!(
-//                "(IfExpr {} {} {})",
-//                expr_printer(&if_stmt.0),
-//                expr_printer(&if_stmt.1),
-//                expr_printer(&if_stmt.2)
-//            ),
-//            ExprKind::ArrayComp(args, expr, _) => {
-//                let mut s_expr = "(ArrayLoopExpr ".to_string();
-//                for (var, expr) in args {
-//                    s_expr.push_str(var.as_str(src));
-//                    s_expr.push(' ');
-//
-//                    s_expr.push_str(&expr_printer(expr));
-//                    s_expr.push(' ');
-//                }
-//                s_expr.push_str(&expr_printer(expr));
-//                s_expr.push(')');
-//                s_expr
-//            }
-//            ExprKind::Sum(args, expr, _) => {
-//                let mut s_expr = "(SumLoopExpr ".to_string();
-//                for (var, expr) in args {
-//                    s_expr.push_str(var.as_str(src));
-//                    s_expr.push(' ');
-//
-//                    s_expr.push_str(&expr_printer(expr));
-//                    s_expr.push(' ');
-//                }
-//                s_expr.push_str(&expr_printer(expr));
-//                s_expr.push(')');
-//                s_expr
-//            }
-//            ExprKind::And(operands) => format!(
-//                "(BinopExpr {} && {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Or(operands) => format!(
-//                "(BinopExpr {} || {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::LessThan(operands) => format!(
-//                "(BinopExpr {} < {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::GreaterThan(operands) => format!(
-//                "(BinopExpr {} > {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::LessThanEq(operands) => format!(
-//                "(BinopExpr {} <= {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::GreaterThanEq(operands) => format!(
-//                "(BinopExpr {} >= {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Eq(operands) => format!(
-//                "(BinopExpr {} == {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::NotEq(operands) => format!(
-//                "(BinopExpr {} != {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Add(operands) => format!(
-//                "(BinopExpr {} + {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Minus(operands) => format!(
-//                "(BinopExpr {} - {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Mulitply(operands) => format!(
-//                "(BinopExpr {} * {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Divide(operands) => format!(
-//                "(BinopExpr {} / {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Modulo(operands) => format!(
-//                "(BinopExpr {} % {})",
-//                expr_printer(&operands.0),
-//                expr_printer(&operands.1)
-//            ),
-//            ExprKind::Not(expr) => format!("(UnopExpr ! {})", expr_printer(expr)),
-//            ExprKind::Negation(expr) => format!("(UnopExpr - {})", expr_printer(expr)),
-//            ExprKind::Paren(expr) => expr.to_s_expr_general(src, Some(expr_printer)),
-//        }
-//    }
-//}

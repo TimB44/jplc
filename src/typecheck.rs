@@ -18,13 +18,6 @@ pub enum TypeVal {
     Void,
 }
 
-pub trait TypeState {}
-
-#[derive(Debug, Clone)]
-pub struct UnTyped {}
-impl TypeState for UnTyped {}
-impl TypeState for TypeVal {}
-
 impl TypeVal {
     pub fn as_str(&self, env: &Environment) -> String {
         match self {
@@ -57,20 +50,21 @@ impl SExpr for TypeVal {
         if let SExprOptions::Untyped = opt {
             return Ok(());
         }
+
         match self {
-            TypeVal::Int => write!(f, " (IntType) "),
-            TypeVal::Bool => write!(f, " (BoolType) "),
-            TypeVal::Float => write!(f, " (FloatType) "),
+            TypeVal::Int => write!(f, " (IntType)"),
+            TypeVal::Bool => write!(f, " (BoolType)"),
+            TypeVal::Float => write!(f, " (FloatType)"),
             TypeVal::Array(typed, rank) => {
                 write!(
                     f,
-                    " (ArrayType ({}) {}) ",
+                    " (ArrayType{} {})",
                     Displayable(typed.as_ref(), env, opt),
                     rank
                 )
             }
-            TypeVal::Struct(id) => write!(f, " (StructType {}) ", env.get_struct_id(*id).name()),
-            TypeVal::Void => write!(f, " (VoidType) "),
+            TypeVal::Struct(id) => write!(f, " (StructType {})", env.get_struct_id(*id).name()),
+            TypeVal::Void => write!(f, " (VoidType)"),
         }
     }
 }
