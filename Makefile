@@ -1,6 +1,8 @@
 TEST=test.jpl
+.PHONY: all compile run clean test
 
 all: run
+
 
 compile: 
 	cargo build 
