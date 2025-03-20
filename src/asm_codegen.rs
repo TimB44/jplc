@@ -5,7 +5,7 @@ use fragments::{MAIN_EPILOGUE, MAIN_PROLOGE};
 use crate::{
     ast::{expr::Expr, Program},
     environment::Environment,
-    typecheck::Typed,
+    typecheck::TypeVal,
 };
 
 mod cmd_codegen;
@@ -46,7 +46,7 @@ struct AsmFn<'a> {
 }
 
 impl<'a, 'b> AsmEnv<'a, 'b> {
-    pub fn new(env: &'b Environment<'a>, typed_ast: Program<Typed>) -> Self {
+    pub fn new(env: &'b Environment<'a>, typed_ast: Program) -> Self {
         let mut main_fn = AsmFn::new(MAIN_FN_NAME);
         main_fn.text.extend_from_slice(MAIN_PROLOGE);
         let mut asm_env = Self {
@@ -117,11 +117,11 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
     }
 
     // TODO memosize result
-    fn type_size(&self, ty: &Typed) -> u64 {
+    fn type_size(&self, ty: &TypeVal) -> u64 {
         match ty {
-            Typed::Int | Typed::Bool | Typed::Float => WORD_SIZE,
-            Typed::Array(_, dims) => WORD_SIZE + WORD_SIZE * *dims as u64,
-            Typed::Struct(id) => self
+            TypeVal::Int | TypeVal::Bool | TypeVal::Float => WORD_SIZE,
+            TypeVal::Array(_, dims) => WORD_SIZE + WORD_SIZE * *dims as u64,
+            TypeVal::Struct(id) => self
                 .env
                 .get_struct_id(*id)
                 .fields()
@@ -130,7 +130,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                 .sum(),
 
             // IDK if this is correct.
-            Typed::Void => 0,
+            TypeVal::Void => 0,
         }
     }
 
@@ -168,19 +168,19 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         jmp
     }
 
-    fn call_fn(&mut self, name: &'a str, args: &[Expr<Typed>], ret_type: &Typed) {
+    fn call_fn(&mut self, name: &'a str, args: &[Expr], ret_type: &TypeVal) {
         // TODO: allocate space for struct retval here
         let num_int_args = args
             .iter()
             .map(|e| e.type_data())
             // TODO maybe add void to the matches
-            .filter(|t| matches!(t, Typed::Int | Typed::Bool))
+            .filter(|t| matches!(t, TypeVal::Int | TypeVal::Bool))
             .count();
 
         let num_float_args = args
             .iter()
             .map(|e| e.type_data())
-            .filter(|t| matches!(t, Typed::Float))
+            .filter(|t| matches!(t, TypeVal::Float))
             .count();
 
         let mut cur_int_arg = num_int_args;
@@ -190,16 +190,16 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             .iter()
             .rev()
             .filter(|e| match e.type_data() {
-                Typed::Array(_, _) | Typed::Struct(_) => true,
-                Typed::Int | Typed::Bool => {
+                TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
+                TypeVal::Int | TypeVal::Bool => {
                     cur_int_arg -= 1;
                     cur_int_arg >= INT_REGS_FOR_ARGS.len()
                 }
-                Typed::Float => {
+                TypeVal::Float => {
                     cur_float_arg -= 1;
                     cur_int_arg >= FLOAT_REGS_FOR_ARGS.len()
                 }
-                Typed::Void => todo!(),
+                TypeVal::Void => todo!(),
             })
             .map(|e| self.type_size(e.type_data()))
             .sum();
@@ -209,16 +209,16 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         let mut cur_int_arg = num_int_args;
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
-            Typed::Array(_, _) | Typed::Struct(_) => true,
-            Typed::Int | Typed::Bool => {
+            TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
+            TypeVal::Int | TypeVal::Bool => {
                 cur_int_arg -= 1;
                 cur_int_arg >= INT_REGS_FOR_ARGS.len()
             }
-            Typed::Float => {
+            TypeVal::Float => {
                 cur_float_arg -= 1;
                 cur_int_arg >= FLOAT_REGS_FOR_ARGS.len()
             }
-            Typed::Void => todo!(),
+            TypeVal::Void => todo!(),
         }) {
             self.gen_asm_expr(stack_args);
         }
@@ -226,16 +226,16 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         let mut cur_int_arg = num_int_args;
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
-            Typed::Array(_, _) | Typed::Struct(_) => false,
-            Typed::Int | Typed::Bool => {
+            TypeVal::Array(_, _) | TypeVal::Struct(_) => false,
+            TypeVal::Int | TypeVal::Bool => {
                 cur_int_arg -= 1;
                 cur_int_arg < INT_REGS_FOR_ARGS.len()
             }
-            Typed::Float => {
+            TypeVal::Float => {
                 cur_float_arg -= 1;
                 cur_int_arg < FLOAT_REGS_FOR_ARGS.len()
             }
-            Typed::Void => todo!(),
+            TypeVal::Void => todo!(),
         }) {
             self.gen_asm_expr(stack_args);
         }
@@ -244,15 +244,15 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         let mut cur_float_arg = 0;
         for arg in args {
             match arg.type_data() {
-                Typed::Int | Typed::Bool if cur_int_arg < INT_REGS_FOR_ARGS.len() => {
+                TypeVal::Int | TypeVal::Bool if cur_int_arg < INT_REGS_FOR_ARGS.len() => {
                     self.add_instrs([Instr::Pop(INT_REGS_FOR_ARGS[cur_int_arg])]);
                     cur_int_arg += 1;
                 }
-                Typed::Float if cur_float_arg < FLOAT_REGS_FOR_ARGS.len() => {
+                TypeVal::Float if cur_float_arg < FLOAT_REGS_FOR_ARGS.len() => {
                     self.add_instrs([Instr::Pop(FLOAT_REGS_FOR_ARGS[cur_float_arg])]);
                     cur_float_arg += 1;
                 }
-                Typed::Void => todo!(),
+                TypeVal::Void => todo!(),
                 _ => (),
             }
         }
@@ -260,12 +260,12 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         self.add_instrs([Instr::Call(name)]);
         self.remove_stack_alignment(stack_aligned);
         self.add_instrs(match ret_type {
-            Typed::Int => [Instr::Push(Reg::Rax)],
-            Typed::Bool => [Instr::Push(Reg::Rax)],
-            Typed::Float => [Instr::Push(Reg::Xmm0)],
-            Typed::Array(typed, _) => todo!(),
-            Typed::Struct(_) => todo!(),
-            Typed::Void => todo!(),
+            TypeVal::Int => [Instr::Push(Reg::Rax)],
+            TypeVal::Bool => [Instr::Push(Reg::Rax)],
+            TypeVal::Float => [Instr::Push(Reg::Xmm0)],
+            TypeVal::Array(typed, _) => todo!(),
+            TypeVal::Struct(_) => todo!(),
+            TypeVal::Void => todo!(),
         });
     }
 }

@@ -1,5 +1,3 @@
-use crate::{ast::expr::Expr, typecheck::Typed};
-
 use super::{Asm, Instr, MemLoc, Operand, Reg};
 
 pub const HEADER: &[Asm] = &[

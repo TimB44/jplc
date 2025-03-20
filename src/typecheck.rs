@@ -2,9 +2,9 @@ use std::fmt;
 
 use crate::ast::types::{self, Type};
 use crate::environment::Environment;
+use crate::parse::{Displayable, SExpr, SExprOptions};
 use std::borrow::Cow;
 use std::fmt::Write;
-use crate::parse::{Displayable, SExpr, SExprOptions};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeVal {
@@ -37,8 +37,8 @@ impl TypeVal {
             TypeVal::Void => "void".to_string(),
         }
     }
-
-/// Writes the type s-expression if opt is `SExprOptions::Typed`. If it is `SExprOptions::UnTyped` then it
+}
+/// Writes the type s-expression if opt is `SExprOptions::TypeVal`. If it is `SExprOptions::UnTypeVal` then it
 /// will not write anything. Note: unlike other s-expression writers this will print a space around it
 /// in order of it to be easily used for typed and untyped s-expressions
 impl SExpr for TypeVal {
@@ -90,12 +90,12 @@ impl TypeVal {
 
     pub fn write_type_string(&self, s: &mut String, env: &Environment) {
         match self {
-            Typed::Array(inner_type, rank) => {
+            TypeVal::Array(inner_type, rank) => {
                 s.push_str("(ArrayType ");
                 inner_type.write_type_string(s, env);
                 write!(s, " {})", rank).expect("string should not fail to write");
             }
-            Typed::Struct(id) => {
+            TypeVal::Struct(id) => {
                 s.push_str("(TupleType");
                 let info = env.get_struct_id(*id);
                 for (_, ty) in info.fields() {
@@ -109,16 +109,16 @@ impl TypeVal {
                 }
                 s.push(')');
             }
-            Typed::Int => {
+            TypeVal::Int => {
                 s.push_str("(IntType)");
             }
-            Typed::Bool => {
+            TypeVal::Bool => {
                 s.push_str("(BoolType)");
             }
-            Typed::Float => {
+            TypeVal::Float => {
                 s.push_str("(FloatType)");
             }
-            Typed::Void => {
+            TypeVal::Void => {
                 s.push_str("(VoidType)");
             }
         }
@@ -126,14 +126,14 @@ impl TypeVal {
 
     pub fn to_type_string<'a>(&self, env: &Environment<'a>) -> Cow<'a, str> {
         match self {
-            Typed::Array(inner_type, rank) => {
+            TypeVal::Array(inner_type, rank) => {
                 let mut s = String::new();
                 s.push_str("(ArrayType ");
                 inner_type.write_type_string(&mut s, env);
                 write!(s, " {})", rank).expect("string should not fail to write");
                 Cow::Owned(s)
             }
-            Typed::Struct(id) => {
+            TypeVal::Struct(id) => {
                 let mut s = String::new();
                 s.push_str("(TupleType");
                 let info = env.get_struct_id(*id);
@@ -149,10 +149,10 @@ impl TypeVal {
                 s.push(')');
                 Cow::Owned(s)
             }
-            Typed::Int => Cow::Borrowed("(IntType)"),
-            Typed::Bool => Cow::Borrowed("(BoolType)"),
-            Typed::Float => Cow::Borrowed("(FloatType)"),
-            Typed::Void => Cow::Borrowed("(VoidType)"),
+            TypeVal::Int => Cow::Borrowed("(IntType)"),
+            TypeVal::Bool => Cow::Borrowed("(BoolType)"),
+            TypeVal::Float => Cow::Borrowed("(FloatType)"),
+            TypeVal::Void => Cow::Borrowed("(VoidType)"),
         }
     }
 }

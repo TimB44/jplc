@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
     ast::expr::{Expr, ExprKind},
-    typecheck::Typed,
+    typecheck::TypeVal,
 };
 
 const DIVIDE_BY_ZERO_ERR_MSG: &str = "divide by zero";
@@ -11,7 +11,7 @@ const MOD_BY_ZERO_ERR_MSG: &str = "mod by zero";
 use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
 impl<'a, 'b> AsmEnv<'a, 'b> {
-    pub fn gen_asm_expr(&mut self, expr: &Expr<Typed>) {
+    pub fn gen_asm_expr(&mut self, expr: &Expr) {
         match expr.kind() {
             ExprKind::IntLit(val) => {
                 let const_id = self.add_const(&ConstKind::Int(*val));
@@ -92,17 +92,17 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             ExprKind::Minus(args) => self.arithmetic_binop(args, Instr::Sub),
             ExprKind::Mulitply(args) => self.arithmetic_binop(args, Instr::Mul),
             ExprKind::Divide(args) => match expr.type_data() {
-                Typed::Int => {
+                TypeVal::Int => {
                     self.gen_div_mod(args, true);
                 }
-                Typed::Float => self.arithmetic_binop(args, Instr::Div),
+                TypeVal::Float => self.arithmetic_binop(args, Instr::Div),
                 _ => unreachable!(),
             },
             ExprKind::Modulo(args) => match expr.type_data() {
-                Typed::Int => {
+                TypeVal::Int => {
                     self.gen_div_mod(args, false);
                 }
-                Typed::Float => {
+                TypeVal::Float => {
                     //FIXME: The tests are busted so dont align the stack here
                     let (lhs, rhs) = args.as_ref();
                     self.gen_asm_expr(rhs);
@@ -127,14 +127,14 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             ExprKind::Negation(expr) => {
                 self.gen_asm_expr(expr);
                 match expr.type_data() {
-                    Typed::Int => {
+                    TypeVal::Int => {
                         self.add_instrs([
                             Instr::Pop(Reg::Rax),
                             Instr::Neg(Reg::Rax),
                             Instr::Push(Reg::Rax),
                         ]);
                     }
-                    Typed::Float => {
+                    TypeVal::Float => {
                         self.add_instrs([
                             Instr::Pop(Reg::Xmm1),
                             Instr::Xor(Operand::Reg(Reg::Xmm0), Operand::Reg(Reg::Xmm0)),
@@ -151,14 +151,14 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
     // User for most binops arithmetic binary operators except division and mod
     fn arithmetic_binop(
         &mut self,
-        args: &(Expr<Typed>, Expr<Typed>),
+        args: &(Expr, Expr),
         instr: fn(Operand, Operand) -> Instr<'static>,
     ) {
         let (lhs, rhs) = args;
         self.gen_asm_expr(rhs);
         self.gen_asm_expr(lhs);
         match lhs.type_data() {
-            Typed::Int => {
+            TypeVal::Int => {
                 self.add_instrs([
                     Instr::Pop(Reg::Rax),
                     Instr::Pop(Reg::R10),
@@ -166,7 +166,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                     Instr::Push(Reg::Rax),
                 ]);
             }
-            Typed::Float => {
+            TypeVal::Float => {
                 self.add_instrs([
                     Instr::Pop(Reg::Xmm0),
                     Instr::Pop(Reg::Xmm1),
@@ -178,12 +178,12 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         }
     }
 
-    fn comparison_binop(&mut self, args: &(Expr<Typed>, Expr<Typed>), kind: &ExprKind<Typed>) {
+    fn comparison_binop(&mut self, args: &(Expr, Expr), kind: &ExprKind) {
         let (lhs, rhs) = args;
         self.gen_asm_expr(rhs);
         self.gen_asm_expr(lhs);
         match lhs.type_data() {
-            Typed::Int | Typed::Bool => {
+            TypeVal::Int | TypeVal::Bool => {
                 let set_instr = match kind {
                     ExprKind::LessThan(_) => Instr::Setl,
                     ExprKind::GreaterThan(_) => Instr::Setg,
@@ -200,7 +200,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                     set_instr,
                 ]);
             }
-            Typed::Float => {
+            TypeVal::Float => {
                 let (set_instr, output_reg) = match kind {
                     ExprKind::LessThan(_) => (Instr::Cmplt(Reg::Xmm0, Reg::Xmm1), Reg::Xmm0),
                     ExprKind::GreaterThan(_) => (Instr::Cmplt(Reg::Xmm1, Reg::Xmm0), Reg::Xmm1),
@@ -226,7 +226,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         ]);
     }
 
-    pub fn gen_div_mod(&mut self, args: &(Expr<Typed>, Expr<Typed>), divide: bool) {
+    pub fn gen_div_mod(&mut self, args: &(Expr, Expr), divide: bool) {
         let (lhs, rhs) = args;
         self.gen_asm_expr(rhs);
         self.gen_asm_expr(lhs);

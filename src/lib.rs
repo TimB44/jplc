@@ -79,7 +79,7 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
     }
 
     if mode.assembly {
-        let asm = AsmEnv::new(&env, typed_program);
+        let asm = AsmEnv::new(&env, program);
         print!("{}", asm);
         println!(
             "Compilation succeeded: x86-64 code generation complete in {}ms",

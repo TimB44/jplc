@@ -1,12 +1,9 @@
-use crate::{
-    ast::cmd::{Cmd, CmdKind},
-    typecheck::Typed,
-};
+use crate::ast::cmd::{Cmd, CmdKind};
 
 use super::{AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
 impl<'a, 'b> AsmEnv<'a, 'b> {
-    pub fn gen_asm_cmd(&mut self, cmd: &Cmd<Typed>) {
+    pub fn gen_asm_cmd(&mut self, cmd: &Cmd) {
         match cmd.kind() {
             CmdKind::ReadImage(_, lvalue) => todo!(),
             CmdKind::WriteImage(expr, _) => todo!(),
