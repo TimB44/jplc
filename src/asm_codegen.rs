@@ -17,8 +17,8 @@ mod stmt_codegen;
 const MAIN_FN_IDX: usize = 0;
 const MAIN_FN_NAME: &str = "jpl_main";
 const WORD_SIZE: u64 = 8;
-const STARTING_ALLIGNMENT: u8 = 8;
-const STACK_FRAME_ALLIGNMENT: u8 = 16;
+const STARTING_ALIGNMENT: u8 = 8;
+const STACK_FRAME_ALIGNMENT: u8 = 16;
 const INT_REGS_FOR_ARGS: [Reg; 6] = [Reg::Rdi, Reg::Rdx, Reg::Rsi, Reg::Rcx, Reg::R8, Reg::R9];
 const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
     Reg::Xmm0,
@@ -41,7 +41,7 @@ pub struct AsmEnv<'a, 'b> {
 
 struct AsmFn<'a> {
     text: Vec<Asm<'a>>,
-    // true if 16 byte alligned, false if not
+    // true if 16 byte aligned, false if not
     aligned: bool,
 }
 
@@ -86,7 +86,9 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         cur_fn.text.extend(instrs.into_iter().inspect(|a| {
             if let Asm::Instr(instr) = a {
                 match instr {
-                    Instr::Call(_) => {
+                    //FIXME: Fmod is not aligned by the reference compiler should remove once
+                    //tests are fixed
+                    Instr::Call(name) if *name != "fmod" => {
                         assert!(*alignment);
                     }
                     Instr::Push(reg) | Instr::Pop(reg) => *alignment ^= true,
@@ -94,7 +96,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                         if let Operand::Reg(Reg::Rsp) = lhs {
                             if let Operand::Value(inc) = rhs {
                                 assert_eq!(inc % WORD_SIZE, 0);
-                                *alignment ^= *inc % STACK_FRAME_ALLIGNMENT as u64 == WORD_SIZE;
+                                *alignment ^= *inc % STACK_FRAME_ALIGNMENT as u64 == WORD_SIZE;
                             } else {
                                 unreachable!("Should only add constant values to the stack")
                             }
@@ -132,14 +134,14 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         }
     }
 
-    fn allign_stack(&mut self, left_to_add: u64) -> bool {
+    fn align_stack(&mut self, left_to_add: u64) -> bool {
         assert_eq!(left_to_add % WORD_SIZE, 0);
-        let left_to_add = (left_to_add % STACK_FRAME_ALLIGNMENT as u64) as u8;
-        let cur_allignment = self.fns[self.cur_fn].aligned;
+        let left_to_add = (left_to_add % STACK_FRAME_ALIGNMENT as u64) as u8;
+        let cur_alignment = self.fns[self.cur_fn].aligned;
 
-        let adjustment_alligned = left_to_add % STACK_FRAME_ALLIGNMENT == 0;
+        let adjustment_aligned = left_to_add % STACK_FRAME_ALIGNMENT == 0;
 
-        if cur_allignment ^ adjustment_alligned {
+        if cur_alignment ^ adjustment_aligned {
             self.add_instrs([Instr::Sub(
                 Operand::Reg(Reg::Rsp),
                 Operand::Value(WORD_SIZE as u64),
@@ -151,8 +153,8 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         }
     }
 
-    fn remove_stack_allignment(&mut self, stack_was_alligned: bool) {
-        if stack_was_alligned {
+    fn remove_stack_alignment(&mut self, stack_was_aligned: bool) {
+        if stack_was_aligned {
             self.add_instrs([Instr::Add(
                 Operand::Reg(Reg::Rsp),
                 Operand::Value(WORD_SIZE as u64),
@@ -167,6 +169,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
     }
 
     fn call_fn(&mut self, name: &'a str, args: &[Expr<Typed>], ret_type: &Typed) {
+        // TODO: allocate space for struct retval here
         let num_int_args = args
             .iter()
             .map(|e| e.type_data())
@@ -201,7 +204,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             .map(|e| self.type_size(e.type_data()))
             .sum();
 
-        let stack_alligned = self.allign_stack(stack_space_for_args);
+        let stack_aligned = self.align_stack(stack_space_for_args);
 
         let mut cur_int_arg = num_int_args;
         let mut cur_float_arg = num_float_args;
@@ -255,7 +258,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         }
 
         self.add_instrs([Instr::Call(name)]);
-        self.remove_stack_allignment(stack_alligned);
+        self.remove_stack_alignment(stack_aligned);
         self.add_instrs(match ret_type {
             Typed::Int => [Instr::Push(Reg::Rax)],
             Typed::Bool => [Instr::Push(Reg::Rax)],
@@ -268,11 +271,10 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
 }
 
 impl<'a> AsmFn<'a> {
-    // TODO add name
     fn new(name: &'a str) -> Self {
         Self {
             text: vec![Asm::FnLabel(name)],
-            aligned: STARTING_ALLIGNMENT == STACK_FRAME_ALLIGNMENT,
+            aligned: STARTING_ALIGNMENT == STACK_FRAME_ALIGNMENT,
         }
     }
 }
@@ -301,14 +303,23 @@ enum Instr<'a> {
     Ret,
     Neg(Reg),
     Xor(Operand, Operand),
+    And(Operand, Operand),
     Mul(Operand, Operand),
     Div(Operand, Operand),
-    Setl(Operand, Operand),
-    Setg(Operand, Operand),
-    SetLe(Operand, Operand),
-    SetGe(Operand, Operand),
-    SetE(Operand, Operand),
-    SetNe(Operand, Operand),
+    // Always set register al
+    Setl,
+    Setg,
+    Setle,
+    Setge,
+    Sete,
+    Setne,
+
+    // Only for fp regs
+    Cmplt(Reg, Reg),
+    Cmple(Reg, Reg),
+    Cmpeq(Reg, Reg),
+    Cmpneq(Reg, Reg),
+
     Cmp(Operand, Operand),
     Jne(u64),
     Cqo,
@@ -322,6 +333,14 @@ enum Operand {
 }
 
 impl Operand {
+    fn kind(&self) -> Option<RegKind> {
+        match self {
+            Operand::Reg(reg) => Some(reg.kind()),
+            Operand::Mem(_) => None,
+            Operand::Value(_) => Some(RegKind::Int),
+        }
+    }
+
     fn args_kind(&self, rhs: &Self) -> RegKind {
         match (self, rhs) {
             (Operand::Mem(_), Operand::Mem(_))
@@ -401,9 +420,10 @@ impl Reg {
 #[derive(Clone, Debug)]
 enum MemLoc {
     GlobalOffset(i64),
-    LocalOffset(i64),
+    LocalOffset(i64, u64),
     Const(u64),
     Reg(Reg),
+    RegOffset(Reg, i64),
 }
 
 #[derive(Clone, Debug)]

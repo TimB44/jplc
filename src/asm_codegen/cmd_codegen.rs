@@ -1,9 +1,5 @@
 use crate::{
-    ast::{
-        cmd::{Cmd, CmdKind},
-        expr::Expr,
-        Program,
-    },
+    ast::cmd::{Cmd, CmdKind},
     typecheck::Typed,
 };
 
@@ -18,9 +14,8 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             CmdKind::Assert(expr, _) => todo!(),
             CmdKind::Print(_) => todo!(),
             CmdKind::Show(expr) => {
-                // TODO: Allign stack
                 let type_size = self.type_size(expr.type_data());
-                let stack_aligned = self.allign_stack(type_size);
+                let stack_aligned = self.align_stack(type_size);
                 self.gen_asm_expr(expr);
                 let id = self.add_const(&ConstKind::String(
                     expr.type_data().to_type_string(self.env),
@@ -33,7 +28,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                     Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(type_size)),
                 ]);
 
-                self.remove_stack_allignment(stack_aligned);
+                self.remove_stack_alignment(stack_aligned);
             }
             CmdKind::Time(cmd) => todo!(),
             CmdKind::Function {

@@ -52,9 +52,17 @@ impl Display for Asm<'_> {
 impl Display for Instr<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Instr::Mov(lhs, rhs) => match lhs.args_kind(rhs) {
-                RegKind::Int => write!(f, "mov {}, {}", lhs, rhs),
-                RegKind::Float => write!(f, "movsd {}, {}", lhs, rhs),
+            Instr::Mov(lhs, rhs) => match (lhs.kind(), rhs.kind()) {
+                (Some(RegKind::Int), Some(RegKind::Float))
+                | (Some(RegKind::Float), Some(RegKind::Int)) => {
+                    write!(f, "movq {}, {}", lhs, rhs)
+                }
+                (Some(RegKind::Int), _) | (_, Some(RegKind::Int)) | (None, None) => {
+                    write!(f, "mov {}, {}", lhs, rhs)
+                }
+                (Some(RegKind::Float), _) | (_, Some(RegKind::Float)) => {
+                    write!(f, "movsd {}, {}", lhs, rhs)
+                }
             },
             Instr::Lea(reg, mem_loc) => write!(f, "lea {}, {}", reg, mem_loc),
             Instr::Call(name) => write!(f, "call _{}", name),
@@ -112,14 +120,13 @@ impl Display for Instr<'_> {
                     write!(f, "subsd {}, {}", lhs, rhs)
                 }
             },
-
             Instr::Ret => write!(f, "ret"),
             Instr::Neg(reg) => write!(f, "neg {}", reg),
-
             Instr::Xor(lhs, rhs) => match lhs.args_kind(rhs) {
                 RegKind::Int => write!(f, "xor {}, {}", lhs, rhs),
                 RegKind::Float => write!(f, "pxor {}, {}", lhs, rhs),
             },
+            Instr::And(lhs, rhs) => write!(f, "and {}, {}", lhs, rhs),
             Instr::Mul(lhs, rhs) => match lhs.args_kind(rhs) {
                 RegKind::Int => write!(f, "imul {}, {}", lhs, rhs),
                 RegKind::Float => write!(f, "mulsd {}, {}", lhs, rhs),
@@ -131,15 +138,19 @@ impl Display for Instr<'_> {
                 }
                 RegKind::Float => write!(f, "divsd {}, {}", lhs, rhs),
             },
-            Instr::Setl(lhs, rhs) => todo!(),
-            Instr::Setg(lhs, rhs) => todo!(),
-            Instr::SetLe(lhs, rhs) => todo!(),
-            Instr::SetGe(lhs, rhs) => todo!(),
-            Instr::SetE(lhs, rhs) => todo!(),
-            Instr::SetNe(lhs, rhs) => todo!(),
+            Instr::Setl => write!(f, "setl al"),
+            Instr::Setg => write!(f, "setg al"),
+            Instr::Setle => write!(f, "setle al"),
+            Instr::Setge => write!(f, "setge al",),
+            Instr::Sete => write!(f, "sete al"),
+            Instr::Setne => write!(f, "setne al"),
             Instr::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             Instr::Jne(jump_id) => write!(f, "jne .jump{}", jump_id),
             Instr::Cqo => write!(f, "cqo"),
+            Instr::Cmplt(lhs, rhs) => write!(f, "cmpltsd {}, {}", lhs, rhs),
+            Instr::Cmple(lhs, rhs) => write!(f, "cmplesd {}, {}", lhs, rhs),
+            Instr::Cmpeq(lhs, rhs) => write!(f, "cmpeqsd {}, {}", lhs, rhs),
+            Instr::Cmpneq(lhs, rhs) => write!(f, "cmpneqsd {}, {}", lhs, rhs),
         }
     }
 }
@@ -184,9 +195,16 @@ impl Display for MemLoc {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             MemLoc::GlobalOffset(offset) => todo!(),
-            MemLoc::LocalOffset(offset) => todo!(),
+            MemLoc::LocalOffset(offset, idk) => todo!(),
             MemLoc::Const(id) => write!(f, "[rel const{}]", id),
             MemLoc::Reg(reg) => write!(f, "[{}]", reg),
+            MemLoc::RegOffset(reg, offset) => write!(
+                f,
+                "[{} {} {}]",
+                reg,
+                if *offset < 0 { '-' } else { '+' },
+                offset.abs()
+            ),
         }
     }
 }
