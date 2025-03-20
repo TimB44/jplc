@@ -5,8 +5,11 @@ all: run
 compile: 
 	cargo build -r
 
+build: compile
+
 run: 
-	./target/release/jplc -i $(TEST) 
+	./target/release/jplc -s $(TEST) 
 
 clean:
 	cargo clean	
+
