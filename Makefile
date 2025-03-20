@@ -3,13 +3,17 @@ TEST=test.jpl
 all: run
 
 compile: 
-	cargo build -r
+	cargo build 
 
 build: compile
 
 run: 
-	./target/release/jplc -s $(TEST) 
+	./target/debug/jplc -s $(TEST) 
 
 clean:
 	cargo clean	
+
+test: compile
+	cd grader && make | head -n 50 
+
 
