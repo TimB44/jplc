@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use asm_codegen::AsmEnv;
 use ast::Program;
 use c_codegen::generate_c;
 use cli::Mode;
@@ -11,6 +12,7 @@ use utils::exit_with_error;
 pub mod cli;
 pub mod utils;
 
+mod asm_codegen;
 mod ast;
 mod c_codegen;
 mod environment;
@@ -22,8 +24,8 @@ mod typecheck;
 pub fn compile(source_name: String, source: String, mode: Mode) {
     // TODO: Remove assertion for future assignments
     assert!(
-        mode.lex | mode.parse | mode.typecheck | mode.c_ir,
-        "Only lexing, parsing, typechecking and parts of C IR implemented"
+        mode.lex | mode.parse | mode.typecheck | mode.c_ir | mode.assembly,
+        "Only lexing, parsing, typechecking, C IR, and parts assembly codegen implemented"
     );
     let start_time = Instant::now();
 
@@ -78,6 +80,16 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
         generate_c(typed_program, &env);
         println!(
             "Compilation succeeded: c code generation complete in {}ms",
+            Instant::now().duration_since(start_time).as_millis()
+        );
+        return;
+    }
+
+    if mode.assembly {
+        let asm = AsmEnv::new(&env, typed_program);
+        print!("{}", asm);
+        println!(
+            "Compilation succeeded: x86-64 code generation complete in {}ms",
             Instant::now().duration_since(start_time).as_millis()
         );
         return;

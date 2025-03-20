@@ -1,0 +1,221 @@
+use std::fmt::{self, Display, Formatter};
+
+use crate::asm_codegen::{AsmFn, MAIN_FN_IDX, WORD_SIZE};
+
+use super::{
+    fragments::HEADER, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg, RegKind, Section,
+};
+const INDENTATION: &str = "\t";
+
+impl Display for AsmEnv<'_, '_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for asm in HEADER {
+            write!(f, "{}", asm)?;
+        }
+        write!(f, "\n")?;
+
+        write!(f, "{}", Asm::Section(Section::Data))?;
+
+        // Sort is not ideal.
+        let mut consts: Vec<_> = self.consts.iter().collect();
+        consts.sort_by_key(|(_, b)| **b);
+
+        for (c, id) in consts {
+            // Clone not ideal
+            write!(f, "{}", Asm::Const(*id, c.clone()))?;
+        }
+        write!(f, "\n")?;
+        write!(f, "{}", Asm::Section(Section::Text))?;
+        for AsmFn { text, .. } in self.fns.iter().skip(1).chain([&self.fns[MAIN_FN_IDX]]) {
+            for asm in text {
+                write!(f, "{}", asm)?;
+            }
+            write!(f, "\n")?;
+        }
+        Ok(())
+    }
+}
+impl Display for Asm<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Asm::Global(s) => write!(f, "global {}\n", s),
+            Asm::Extern(s) => write!(f, "extern {}\n", s),
+            Asm::Section(section) => write!(f, "section {}\n", section),
+            Asm::Const(id, const_kind) => write!(f, "const{}: {}\n", id, const_kind),
+            Asm::Instr(instr) => write!(f, "{}{}\n", INDENTATION, instr),
+            Asm::FnLabel(name) => write!(f, "{}:\n_{}:\n", name, name),
+            Asm::JumpLabel(id) => write!(f, ".jump{}:\n", id),
+        }
+    }
+}
+
+impl Display for Instr<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Instr::Mov(lhs, rhs) => match lhs.args_kind(rhs) {
+                RegKind::Int => write!(f, "mov {}, {}", lhs, rhs),
+                RegKind::Float => write!(f, "movsd {}, {}", lhs, rhs),
+            },
+            Instr::Lea(reg, mem_loc) => write!(f, "lea {}, {}", reg, mem_loc),
+            Instr::Call(name) => write!(f, "call _{}", name),
+            Instr::Push(reg) => match reg.kind() {
+                RegKind::Int => {
+                    write!(f, "push {}", reg)
+                }
+                // use a sub an add instead
+                RegKind::Float => {
+                    write!(
+                        f,
+                        "{}\n",
+                        Instr::Sub(Operand::Reg(Reg::Rsp), Operand::Value(WORD_SIZE))
+                    )?;
+                    write!(
+                        f,
+                        "{}{}",
+                        INDENTATION,
+                        Instr::Mov(Operand::Mem(MemLoc::Reg(Reg::Rsp)), Operand::Reg(*reg))
+                    )
+                }
+            },
+            Instr::Pop(reg) => match reg.kind() {
+                RegKind::Int => {
+                    write!(f, "pop {}", reg)
+                }
+                // use a sub an add instead
+                RegKind::Float => {
+                    write!(
+                        f,
+                        "{}\n",
+                        Instr::Mov(Operand::Reg(*reg), Operand::Mem(MemLoc::Reg(Reg::Rsp)))
+                    )?;
+                    write!(
+                        f,
+                        "{}{}",
+                        INDENTATION,
+                        Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(WORD_SIZE))
+                    )
+                }
+            },
+            Instr::Add(lhs, rhs) => match lhs.args_kind(rhs) {
+                RegKind::Int => {
+                    write!(f, "add {}, {}", lhs, rhs)
+                }
+                RegKind::Float => {
+                    write!(f, "addsd {}, {}", lhs, rhs)
+                }
+            },
+            Instr::Sub(lhs, rhs) => match lhs.args_kind(rhs) {
+                RegKind::Int => {
+                    write!(f, "sub {}, {}", lhs, rhs)
+                }
+                RegKind::Float => {
+                    write!(f, "subsd {}, {}", lhs, rhs)
+                }
+            },
+
+            Instr::Ret => write!(f, "ret"),
+            Instr::Neg(reg) => write!(f, "neg {}", reg),
+
+            Instr::Xor(lhs, rhs) => match lhs.args_kind(rhs) {
+                RegKind::Int => write!(f, "xor {}, {}", lhs, rhs),
+                RegKind::Float => write!(f, "pxor {}, {}", lhs, rhs),
+            },
+            Instr::Mul(lhs, rhs) => match lhs.args_kind(rhs) {
+                RegKind::Int => write!(f, "imul {}, {}", lhs, rhs),
+                RegKind::Float => write!(f, "mulsd {}, {}", lhs, rhs),
+            },
+            Instr::Div(lhs, rhs) => match lhs.args_kind(rhs) {
+                RegKind::Int => {
+                    assert!(matches!(lhs, |Operand::Reg(Reg::Rax)));
+                    write!(f, "idiv {}", rhs)
+                }
+                RegKind::Float => write!(f, "divsd {}, {}", lhs, rhs),
+            },
+            Instr::Setl(lhs, rhs) => todo!(),
+            Instr::Setg(lhs, rhs) => todo!(),
+            Instr::SetLe(lhs, rhs) => todo!(),
+            Instr::SetGe(lhs, rhs) => todo!(),
+            Instr::SetE(lhs, rhs) => todo!(),
+            Instr::SetNe(lhs, rhs) => todo!(),
+            Instr::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
+            Instr::Jne(jump_id) => write!(f, "jne .jump{}", jump_id),
+            Instr::Cqo => write!(f, "cqo"),
+        }
+    }
+}
+
+impl Display for Operand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Operand::Reg(reg) => write!(f, "{}", reg),
+            Operand::Mem(mem_loc) => write!(f, "{}", mem_loc),
+            Operand::Value(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl Display for Reg {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Reg::Rax => write!(f, "rax"),
+            Reg::Rbp => write!(f, "rbp"),
+            Reg::Rsp => write!(f, "rsp"),
+            Reg::R12 => write!(f, "r12"),
+            Reg::Rdi => write!(f, "rdi"),
+            Reg::Rdx => write!(f, "rdx"),
+            Reg::Rsi => write!(f, "rsi"),
+            Reg::Rcx => write!(f, "rcx"),
+            Reg::R8 => write!(f, "r8"),
+            Reg::R9 => write!(f, "r9"),
+            Reg::R10 => write!(f, "r10"),
+            Reg::Xmm0 => write!(f, "xmm0"),
+            Reg::Xmm1 => write!(f, "xmm1"),
+            Reg::Xmm2 => write!(f, "xmm2"),
+            Reg::Xmm3 => write!(f, "xmm3"),
+            Reg::Xmm4 => write!(f, "xmm4"),
+            Reg::Xmm5 => write!(f, "xmm5"),
+            Reg::Xmm6 => write!(f, "xmm6"),
+            Reg::Xmm7 => write!(f, "xmm7"),
+        }
+    }
+}
+
+impl Display for MemLoc {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            MemLoc::GlobalOffset(offset) => todo!(),
+            MemLoc::LocalOffset(offset) => todo!(),
+            MemLoc::Const(id) => write!(f, "[rel const{}]", id),
+            MemLoc::Reg(reg) => write!(f, "[{}]", reg),
+        }
+    }
+}
+
+impl Display for Section {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Section::Data => write!(f, ".data"),
+            Section::Text => write!(f, ".text"),
+        }
+    }
+}
+impl Display for ConstKind<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ConstKind::Int(val) => write!(f, "dq {}", val),
+            ConstKind::Float(val) => write!(f, "dq {:?}", f64::from_bits(*val)),
+            ConstKind::String(cow) => {
+                write!(f, "db `")?;
+                for c in cow.as_ref().chars() {
+                    assert_ne!(c, '\n');
+                    if c == '\\' {
+                        write!(f, "\\")?;
+                    }
+                    write!(f, "{}", c)?;
+                }
+
+                write!(f, "`, 0")
+            }
+        }
+    }
+}

@@ -221,10 +221,6 @@ impl<'a> CFn<'a> {
     fn src(&mut self) -> &mut String {
         &mut self.src
     }
-
-    fn sym_tab(&self) -> &HashMap<&'a str, Ident<'a>> {
-        &self.sym_tab
-    }
 }
 
 fn write_type(s: &mut String, t: &Typed, env: &Environment) {
@@ -245,43 +241,8 @@ fn write_type(s: &mut String, t: &Typed, env: &Environment) {
 
 fn write_type_string_lit(s: &mut String, t: &Typed, env: &Environment) {
     s.push('"');
-    write_type_string(s, t, env);
+    t.write_type_string(s, env);
     s.push('"');
-}
-fn write_type_string(s: &mut String, t: &Typed, env: &Environment) {
-    match t {
-        Typed::Array(inner_type, rank) => {
-            s.push_str("(ArrayType ");
-            write_type_string(s, inner_type, env);
-            write!(s, " {})", rank).expect("string should not fail to write");
-        }
-        Typed::Struct(id) => {
-            s.push_str("(TupleType");
-            let info = env.get_struct_id(*id);
-            for (_, ty) in info.fields() {
-                s.push_str(" ");
-                write_type_string(s, ty, env);
-            }
-
-            //TODO remove, possible bug in tests
-            if info.fields().is_empty() {
-                s.push(' ');
-            }
-            s.push(')');
-        }
-        Typed::Int => {
-            s.push_str("(IntType)");
-        }
-        Typed::Bool => {
-            s.push_str("(BoolType)");
-        }
-        Typed::Float => {
-            s.push_str("(FloatType)");
-        }
-        Typed::Void => {
-            s.push_str("(VoidType)");
-        }
-    }
 }
 
 macro_rules! write_stmt {

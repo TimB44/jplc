@@ -1,5 +1,7 @@
 use crate::ast::types::{self, Type};
 use crate::environment::Environment;
+use std::borrow::Cow;
+use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Typed {
@@ -52,9 +54,7 @@ impl Typed {
             Typed::Void => "VoidType".to_string(),
         }
     }
-}
 
-impl Typed {
     pub fn from_ast_type(t: &Type, env: &Environment) -> miette::Result<Self> {
         Ok(match t.kind() {
             types::TypeKind::Int => Typed::Int,
@@ -70,5 +70,73 @@ impl Typed {
             }
             types::TypeKind::Void => Typed::Void,
         })
+    }
+
+    pub fn write_type_string(&self, s: &mut String, env: &Environment) {
+        match self {
+            Typed::Array(inner_type, rank) => {
+                s.push_str("(ArrayType ");
+                inner_type.write_type_string(s, env);
+                write!(s, " {})", rank).expect("string should not fail to write");
+            }
+            Typed::Struct(id) => {
+                s.push_str("(TupleType");
+                let info = env.get_struct_id(*id);
+                for (_, ty) in info.fields() {
+                    s.push_str(" ");
+                    ty.write_type_string(s, env);
+                }
+
+                //TODO remove, possible bug in tests
+                if info.fields().is_empty() {
+                    s.push(' ');
+                }
+                s.push(')');
+            }
+            Typed::Int => {
+                s.push_str("(IntType)");
+            }
+            Typed::Bool => {
+                s.push_str("(BoolType)");
+            }
+            Typed::Float => {
+                s.push_str("(FloatType)");
+            }
+            Typed::Void => {
+                s.push_str("(VoidType)");
+            }
+        }
+    }
+
+    pub fn to_type_string<'a>(&self, env: &Environment<'a>) -> Cow<'a, str> {
+        match self {
+            Typed::Array(inner_type, rank) => {
+                let mut s = String::new();
+                s.push_str("(ArrayType ");
+                inner_type.write_type_string(&mut s, env);
+                write!(s, " {})", rank).expect("string should not fail to write");
+                Cow::Owned(s)
+            }
+            Typed::Struct(id) => {
+                let mut s = String::new();
+                s.push_str("(TupleType");
+                let info = env.get_struct_id(*id);
+                for (_, ty) in info.fields() {
+                    s.push_str(" ");
+                    ty.write_type_string(&mut s, env);
+                }
+
+                //TODO remove, possible bug in tests
+                if info.fields().is_empty() {
+                    s.push(' ');
+                }
+                s.push(')');
+                Cow::Owned(s)
+            }
+            Typed::Int => Cow::Borrowed("(IntType)"),
+            Typed::Bool => Cow::Borrowed("(BoolType)"),
+            Typed::Float => Cow::Borrowed("(FloatType)"),
+            Typed::Void => Cow::Borrowed("(VoidType)"),
+        }
     }
 }
