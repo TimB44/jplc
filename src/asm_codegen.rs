@@ -86,20 +86,17 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         cur_fn.text.extend(instrs.into_iter().inspect(|a| {
             if let Asm::Instr(instr) = a {
                 match instr {
-                    //FIXME: Fmod is not aligned by the reference compiler should remove once
-                    //tests are fixed
-                    Instr::Call(name) if *name != "fmod" => {
+                    Instr::Call(_) => {
                         assert!(*alignment);
                     }
-                    Instr::Push(reg) | Instr::Pop(reg) => *alignment ^= true,
-                    Instr::Add(lhs, rhs) | Instr::Sub(lhs, rhs) => {
-                        if let Operand::Reg(Reg::Rsp) = lhs {
-                            if let Operand::Value(inc) = rhs {
-                                assert_eq!(inc % WORD_SIZE, 0);
-                                *alignment ^= *inc % STACK_FRAME_ALIGNMENT as u64 == WORD_SIZE;
-                            } else {
-                                unreachable!("Should only add constant values to the stack")
-                            }
+                    Instr::Push(_) | Instr::Pop(_) => *alignment ^= true,
+                    Instr::Add(Operand::Reg(Reg::Rsp), rhs)
+                    | Instr::Sub(Operand::Reg(Reg::Rsp), rhs) => {
+                        if let Operand::Value(inc) = rhs {
+                            assert_eq!(inc % WORD_SIZE, 0);
+                            *alignment ^= *inc % STACK_FRAME_ALIGNMENT as u64 == WORD_SIZE;
+                        } else {
+                            unreachable!("Should only add constant values to the stack")
                         }
                     }
                     Instr::Ret => {

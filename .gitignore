@@ -12,3 +12,4 @@ grader/
 # Test jpl file 
 /examples/test.jpl
 /examples/*.py
+examples/libjpl_rt.a

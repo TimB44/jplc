@@ -103,16 +103,8 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                     self.gen_div_mod(args, false);
                 }
                 TypeVal::Float => {
-                    //FIXME: The tests are busted so dont align the stack here
-                    let (lhs, rhs) = args.as_ref();
-                    self.gen_asm_expr(rhs);
-                    self.gen_asm_expr(lhs);
-                    self.add_instrs([
-                        Instr::Pop(Reg::Xmm0),
-                        Instr::Pop(Reg::Xmm1),
-                        Instr::Call("fmod"),
-                        Instr::Push(Reg::Xmm0),
-                    ]);
+                    // TODO: Remove clone
+                    self.call_fn("fmod", args.as_ref(), &TypeVal::Float);
                 }
                 _ => unreachable!(),
             },
@@ -151,10 +143,10 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
     // User for most binops arithmetic binary operators except division and mod
     fn arithmetic_binop(
         &mut self,
-        args: &(Expr, Expr),
+        args: &[Expr; 2],
         instr: fn(Operand, Operand) -> Instr<'static>,
     ) {
-        let (lhs, rhs) = args;
+        let [lhs, rhs] = args;
         self.gen_asm_expr(rhs);
         self.gen_asm_expr(lhs);
         match lhs.type_data() {
@@ -178,8 +170,8 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         }
     }
 
-    fn comparison_binop(&mut self, args: &(Expr, Expr), kind: &ExprKind) {
-        let (lhs, rhs) = args;
+    fn comparison_binop(&mut self, args: &[Expr; 2], kind: &ExprKind) {
+        let [lhs, rhs] = args;
         self.gen_asm_expr(rhs);
         self.gen_asm_expr(lhs);
         match lhs.type_data() {
@@ -226,8 +218,8 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         ]);
     }
 
-    pub fn gen_div_mod(&mut self, args: &(Expr, Expr), divide: bool) {
-        let (lhs, rhs) = args;
+    pub fn gen_div_mod(&mut self, args: &[Expr; 2], divide: bool) {
+        let [lhs, rhs] = args;
         self.gen_asm_expr(rhs);
         self.gen_asm_expr(lhs);
         let ok_jump = self.next_jump();

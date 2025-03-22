@@ -744,7 +744,7 @@ fn expr_to_ident<'a, 'b>(expr: &Expr, cenv: &mut CGenEnv<'a, 'b>) -> Ident<'b> {
         }
         kind @ (ExprKind::Or(args) | ExprKind::And(args)) => {
             let is_or = matches!(kind, ExprKind::Or(_));
-            let (lhs, rhs) = &**args;
+            let [lhs, rhs] = args.as_ref();
             // IDK why the autograder wants it this way
             let output_ident = cenv.cur_fn().gen_sym();
             let lhs_ident = expr_to_ident(lhs, cenv);
@@ -779,7 +779,7 @@ fn expr_to_ident<'a, 'b>(expr: &Expr, cenv: &mut CGenEnv<'a, 'b>) -> Ident<'b> {
         ExprKind::Modulo(args) => match expr.type_data() {
             TypeVal::Int => codegen_binop(cenv, "%", args, &expr.type_data()),
             TypeVal::Float => {
-                let (lhs, rhs) = &**args;
+                let [lhs, rhs] = &**args;
                 let lhs_ident = expr_to_ident(lhs, cenv);
                 let rhs_ident = expr_to_ident(rhs, cenv);
                 write_assign_stmt!(cenv, &TypeVal::Float, "fmod({}, {})", lhs_ident, rhs_ident)
@@ -802,10 +802,10 @@ fn expr_to_ident<'a, 'b>(expr: &Expr, cenv: &mut CGenEnv<'a, 'b>) -> Ident<'b> {
 fn codegen_binop<'a, 'b>(
     env: &mut CGenEnv<'a, 'b>,
     op: &str,
-    args: &(Expr, Expr),
+    args: &[Expr; 2],
     output: &TypeVal,
 ) -> Ident<'b> {
-    let (lhs, rhs) = args;
+    let [lhs, rhs] = args;
     let lhs_ident = expr_to_ident(lhs, env);
     let rhs_ident = expr_to_ident(rhs, env);
     write_assign_stmt!(env, output, "{} {} {}", lhs_ident, op, rhs_ident)

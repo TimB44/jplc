@@ -122,41 +122,38 @@ pub enum ExprKind {
     Sum(Box<[LoopVar]>, Box<Expr>, usize),
 
     // Bool ops
-    And(Box<(Expr, Expr)>),
-    Or(Box<(Expr, Expr)>),
+    And(Box<[Expr; 2]>),
+    Or(Box<[Expr; 2]>),
 
     // Comparisons: <, >, <=, and >=, ==, !=
-    LessThan(Box<(Expr, Expr)>),
-    GreaterThan(Box<(Expr, Expr)>),
-    LessThanEq(Box<(Expr, Expr)>),
-    GreaterThanEq(Box<(Expr, Expr)>),
-    Eq(Box<(Expr, Expr)>),
-    NotEq(Box<(Expr, Expr)>),
+    LessThan(Box<[Expr; 2]>),
+    GreaterThan(Box<[Expr; 2]>),
+    LessThanEq(Box<[Expr; 2]>),
+    GreaterThanEq(Box<[Expr; 2]>),
+    Eq(Box<[Expr; 2]>),
+    NotEq(Box<[Expr; 2]>),
 
     // Additive operations + and -	}
-    Add(Box<(Expr, Expr)>),
-    Minus(Box<(Expr, Expr)>),
+    Add(Box<[Expr; 2]>),
+    Minus(Box<[Expr; 2]>),
 
     // Multiplicative operations *, /, and %
-    Mulitply(Box<(Expr, Expr)>),
-    Divide(Box<(Expr, Expr)>),
-    Modulo(Box<(Expr, Expr)>),
+    Mulitply(Box<[Expr; 2]>),
+    Divide(Box<[Expr; 2]>),
+    Modulo(Box<[Expr; 2]>),
 
     // Unary inverse ! and negation -
     Not(Box<Expr>),
     Negation(Box<Expr>),
 }
 
-//impl ExprKind {
-//    pub fn varient_eq(&self, other: &ExprKind) -> bool {
-//        match self {
-//            ExprKind::Paren(inner) => inner.kind.varient_eq(other),
-//            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
-//        }
-//    }
-//}
+impl Parse for Expr {
+    fn parse(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
+        Self::parse_control(ts, env)
+    }
+}
 
-type VariantBuilder = fn(Box<(Expr, Expr)>) -> ExprKind;
+type VariantBuilder = fn(Box<[Expr; 2]>) -> ExprKind;
 
 fn parse_binary_op(
     ts: &mut TokenStream,
@@ -184,7 +181,7 @@ fn parse_binary_op(
                     let type_data = type_checker(&lhs, &rhs, env, op_as_str)?;
                     lhs = Expr {
                         loc: location,
-                        kind: op_var(Box::new((lhs, rhs))),
+                        kind: op_var(Box::new([lhs, rhs])),
                         type_data,
                     };
                     continue 'outer;
@@ -194,12 +191,6 @@ fn parse_binary_op(
         }
 
         return Ok(lhs);
-    }
-}
-
-impl Parse for Expr {
-    fn parse(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
-        Self::parse_control(ts, env)
     }
 }
 
@@ -949,92 +940,92 @@ impl SExpr for Expr {
                 f,
                 "(BinopExpr{} {} && {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Or(operands) => write!(
                 f,
                 "(BinopExpr{} {} || {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::LessThan(operands) => write!(
                 f,
                 "(BinopExpr{} {} < {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::GreaterThan(operands) => write!(
                 f,
                 "(BinopExpr{} {} > {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::LessThanEq(operands) => write!(
                 f,
                 "(BinopExpr{} {} <= {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::GreaterThanEq(operands) => write!(
                 f,
                 "(BinopExpr{} {} >= {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Eq(operands) => write!(
                 f,
                 "(BinopExpr{} {} == {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::NotEq(operands) => write!(
                 f,
                 "(BinopExpr{} {} != {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Add(operands) => write!(
                 f,
                 "(BinopExpr{} {} + {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Minus(operands) => write!(
                 f,
                 "(BinopExpr{} {} - {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Mulitply(operands) => write!(
                 f,
                 "(BinopExpr{} {} * {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Divide(operands) => write!(
                 f,
                 "(BinopExpr{} {} / {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Modulo(operands) => write!(
                 f,
                 "(BinopExpr{} {} % {})",
                 ty,
-                Displayable(&operands.0, env, opt),
-                Displayable(&operands.1, env, opt)
+                Displayable(&operands[0], env, opt),
+                Displayable(&operands[1], env, opt)
             ),
             ExprKind::Not(expr) => write!(
                 f,
