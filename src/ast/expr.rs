@@ -275,8 +275,8 @@ impl Expr {
 
         for LoopVar(name, val) in &looping_vars {
             val.expect_type(&TypeVal::Int, env)?;
-            env.add_lvalue(&LValue::from_span(*name), TypeVal::Int)?;
         }
+        env.add_loop_bounds(&looping_vars)?;
 
         let body = Self::parse(ts, env)?;
         let loc = arr_token.loc().join(body.loc);
@@ -322,10 +322,10 @@ impl Expr {
             ));
         }
 
-        for LoopVar(name, val) in &looping_vars {
+        for LoopVar(_, val) in &looping_vars {
             val.expect_type(&TypeVal::Int, env)?;
-            env.add_lvalue(&LValue::from_span(*name), TypeVal::Int)?;
         }
+        env.add_loop_bounds(&looping_vars)?;
 
         let body = Self::parse(ts, env)?;
         body.expect_one_of_types(&[TypeVal::Int, TypeVal::Float], env)?;
@@ -721,7 +721,6 @@ impl Expr {
             ));
         }
 
-        // Not ideal but must be done to make the borrow checker happy
         for (expr, (_, ty)) in fields.to_vec().into_iter().zip(info.fields()) {
             expr.expect_type(ty, env)?;
         }

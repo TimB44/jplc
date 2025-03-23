@@ -37,7 +37,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             ExprKind::Void => todo!(),
             ExprKind::Paren(expr) => self.gen_asm_expr(expr.as_ref()),
             ExprKind::ArrayLit(exprs) => {
-                let element_size = self.type_size(exprs[0].type_data());
+                let element_size = self.env.type_size(exprs[0].type_data());
                 let arr_size = element_size * exprs.len() as u64;
                 for expr in exprs.iter().rev() {
                     self.gen_asm_expr(expr);

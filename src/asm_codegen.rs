@@ -14,13 +14,14 @@ mod fragments;
 mod printer;
 mod stmt_codegen;
 
+pub const WORD_SIZE: u64 = 8;
+
 const MAIN_FN_IDX: usize = 0;
 const MAIN_FN_NAME: &str = "jpl_main";
-const WORD_SIZE: u64 = 8;
 const STARTING_ALIGNMENT: u8 = 8;
 const STACK_FRAME_ALIGNMENT: u8 = 16;
-const INT_REGS_FOR_ARGS: [Reg; 6] = [Reg::Rdi, Reg::Rdx, Reg::Rsi, Reg::Rcx, Reg::R8, Reg::R9];
-const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
+pub const INT_REGS_FOR_ARGS: [Reg; 6] = [Reg::Rdi, Reg::Rdx, Reg::Rsi, Reg::Rcx, Reg::R8, Reg::R9];
+pub const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
     Reg::Xmm0,
     Reg::Xmm1,
     Reg::Xmm2,
@@ -41,8 +42,7 @@ pub struct AsmEnv<'a, 'b> {
 
 struct AsmFn<'a> {
     text: Vec<Asm<'a>>,
-    // true if 16 byte aligned, false if not
-    aligned: bool,
+    cur_stack_size: u64,
 }
 
 impl<'a, 'b> AsmEnv<'a, 'b> {
@@ -82,26 +82,33 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
 
     fn add_asm(&mut self, instrs: impl IntoIterator<Item = Asm<'a>>) {
         let cur_fn = &mut self.fns[self.cur_fn];
-        let alignment = &mut cur_fn.aligned;
         cur_fn.text.extend(instrs.into_iter().inspect(|a| {
             if let Asm::Instr(instr) = a {
                 match instr {
                     Instr::Call(_) => {
-                        assert!(*alignment);
+                        assert!(cur_fn.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0);
                     }
-                    Instr::Push(_) | Instr::Pop(_) => *alignment ^= true,
-                    Instr::Add(Operand::Reg(Reg::Rsp), rhs)
-                    | Instr::Sub(Operand::Reg(Reg::Rsp), rhs) => {
+                    Instr::Push(_) => cur_fn.cur_stack_size += 8,
+                    Instr::Pop(_) => cur_fn.cur_stack_size += 8,
+                    Instr::Add(Operand::Reg(Reg::Rsp), rhs) => {
                         if let Operand::Value(inc) = rhs {
                             assert_eq!(inc % WORD_SIZE, 0);
-                            *alignment ^= *inc % STACK_FRAME_ALIGNMENT as u64 == WORD_SIZE;
+                            cur_fn.cur_stack_size -= inc;
+                        } else {
+                            unreachable!("Should only add constant values to the stack")
+                        }
+                    }
+                    Instr::Sub(Operand::Reg(Reg::Rsp), rhs) => {
+                        if let Operand::Value(inc) = rhs {
+                            assert_eq!(inc % WORD_SIZE, 0);
+                            cur_fn.cur_stack_size -= inc;
                         } else {
                             unreachable!("Should only add constant values to the stack")
                         }
                     }
                     Instr::Ret => {
-                        assert!(!*alignment);
-                        *alignment ^= true;
+                        assert!(cur_fn.cur_stack_size == 8);
+                        cur_fn.cur_stack_size -= 8;
                     }
                     _ => (),
                 }
@@ -114,27 +121,11 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
     }
 
     // TODO memosize result
-    fn type_size(&self, ty: &TypeVal) -> u64 {
-        match ty {
-            TypeVal::Int | TypeVal::Bool | TypeVal::Float => WORD_SIZE,
-            TypeVal::Array(_, dims) => WORD_SIZE + WORD_SIZE * *dims as u64,
-            TypeVal::Struct(id) => self
-                .env
-                .get_struct_id(*id)
-                .fields()
-                .iter()
-                .map(|(_, t)| self.type_size(t))
-                .sum(),
-
-            // IDK if this is correct.
-            TypeVal::Void => 0,
-        }
-    }
 
     fn align_stack(&mut self, left_to_add: u64) -> bool {
         assert_eq!(left_to_add % WORD_SIZE, 0);
         let left_to_add = (left_to_add % STACK_FRAME_ALIGNMENT as u64) as u8;
-        let cur_alignment = self.fns[self.cur_fn].aligned;
+        let cur_alignment = self.fns[self.cur_fn].aligned();
 
         let adjustment_aligned = left_to_add % STACK_FRAME_ALIGNMENT == 0;
 
@@ -198,7 +189,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                 }
                 TypeVal::Void => todo!(),
             })
-            .map(|e| self.type_size(e.type_data()))
+            .map(|e| self.env.type_size(e.type_data()))
             .sum();
 
         let stack_aligned = self.align_stack(stack_space_for_args);
@@ -271,8 +262,12 @@ impl<'a> AsmFn<'a> {
     fn new(name: &'a str) -> Self {
         Self {
             text: vec![Asm::FnLabel(name)],
-            aligned: STARTING_ALIGNMENT == STACK_FRAME_ALIGNMENT,
+            cur_stack_size: STARTING_ALIGNMENT as u64,
         }
+    }
+
+    fn aligned(&self) -> bool {
+        self.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0
     }
 }
 

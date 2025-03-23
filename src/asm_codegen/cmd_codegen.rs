@@ -11,7 +11,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             CmdKind::Assert(expr, _) => todo!(),
             CmdKind::Print(_) => todo!(),
             CmdKind::Show(expr) => {
-                let type_size = self.type_size(expr.type_data());
+                let type_size = self.env.type_size(expr.type_data());
                 let stack_aligned = self.align_stack(type_size);
                 self.gen_asm_expr(expr);
                 let id = self.add_const(&ConstKind::String(

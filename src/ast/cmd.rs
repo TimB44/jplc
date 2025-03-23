@@ -109,7 +109,7 @@ impl Cmd {
         expect_tokens(ts, [TokenType::To])?;
         let lvalue = LValue::parse(ts, env)?;
         let loc = read_token.loc().join(str.loc());
-        env.add_lvalue(&lvalue, IMAGE_TYPE.clone())?;
+        env.add_let_lvalue(&lvalue, IMAGE_TYPE.clone())?;
         let number_of_bindings = lvalue.array_bindings().map(|b| b.len()).unwrap_or(2);
         if number_of_bindings != 2 {
             return Err(miette!(
@@ -147,7 +147,7 @@ impl Cmd {
         expect_tokens(ts, [TokenType::Equals])?;
         let expr = Expr::parse(ts, env)?;
 
-        env.add_lvalue(&lvalue, expr.type_data().clone())?;
+        env.add_let_lvalue(&lvalue, expr.type_data().clone())?;
         if let Some(bindings) = lvalue.array_bindings() {
             expr.expect_array_of_rank(bindings.len(), env)?;
         }

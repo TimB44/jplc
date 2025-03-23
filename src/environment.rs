@@ -1,6 +1,7 @@
 use crate::{
+    asm_codegen::{FLOAT_REGS_FOR_ARGS, INT_REGS_FOR_ARGS, WORD_SIZE},
     ast::{
-        auxiliary::{Binding, LValue, StructField, Var},
+        auxiliary::{Binding, LValue, LoopVar, StructField, Var},
         types::Type,
     },
     typecheck::TypeVal,
@@ -24,12 +25,15 @@ pub struct Environment<'a> {
 }
 
 pub const GLOBAL_SCOPE_ID: usize = 0;
+const LOCAL_STACK_OFFSET: i64 = 8;
+const GLOBAL_STACK_OFFSET: i64 = 16;
 
 #[derive(Debug, Clone)]
 pub struct StructInfo<'a> {
     fields: Box<[(&'a str, TypeVal)]>,
     id: usize,
     name: &'a str,
+    size: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -57,18 +61,33 @@ impl FunctionInfo<'_> {
 /// Represents a all the variables in a scope in JPL.
 #[derive(Debug, Clone)]
 pub struct Scope<'a> {
-    names: HashMap<&'a str, VarInfo<'a>>,
-
+    names: HashMap<&'a str, VarInfo>,
+    // Stores with size of this scope plus all parent scopes until we hit a function scope
+    cur_size: u64,
     /// The index of its parent scope in the vec of scopes. 0 is always the index of the global
     /// scope. The parent of the global scope will be itself
     parent: usize,
+    in_fn: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct VarInfo<'a> {
+pub struct VarInfo {
     var_type: TypeVal,
-    // TODO: update once used
-    bindings: Box<[&'a str]>,
+    stack_loc: StackLoc,
+    //bindings: Box<[&'a str]>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StackLoc {
+    Local(i64),
+    Global(i64),
+}
+impl StackLoc {
+    fn offset(&mut self, offset: i64) {
+        match self {
+            StackLoc::Local(cur) | StackLoc::Global(cur) => *cur += offset,
+        }
+    }
 }
 
 impl StructInfo<'_> {
@@ -148,13 +167,16 @@ impl<'a> Environment<'a> {
             entry.insert(*field_name);
             fields.push((field_name_str, converted_type))
         }
+        let size = fields.iter().map(|(_, f)| self.type_size(f)).sum();
 
         let id = self.struct_info.len();
         self.struct_ids.insert(name_str, id);
+
         self.struct_info.push(StructInfo {
             fields: fields.into_boxed_slice(),
             id,
             name: name_str,
+            size,
         });
 
         Ok(())
@@ -200,21 +222,48 @@ impl<'a> Environment<'a> {
         ret_type: &Type,
     ) -> miette::Result<usize> {
         assert!(self.cur_scope == GLOBAL_SCOPE_ID);
-        let scope = self.new_scope();
+        let scope = self.new_scope_with_size(0, true);
+        let ret = TypeVal::from_ast_type(ret_type, self)?;
 
         self.check_name_free(name)?;
         let name = name.as_str(self.src);
+        let mut g_regs_left = INT_REGS_FOR_ARGS.len()
+            - if matches!(ret, TypeVal::Array(_, _) | TypeVal::Struct(_)) {
+                // Add the size of the pointer to where the return type should be placed
+                self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+                1
+            } else {
+                0
+            };
+        let mut fp_regs_left = FLOAT_REGS_FOR_ARGS.len();
+        let mut stack_args_offset = StackLoc::Local(-16);
 
         let args = args
             .iter()
             .map(|arg| {
                 let arg_type = TypeVal::from_ast_type(arg.var_type(), self)?;
-                self.add_lvalue(arg.lvalue(), arg_type.clone())?;
-                Ok(arg_type)
+                let type_size = self.type_size(&arg_type);
+                let ret = arg_type.clone();
+                match &arg_type {
+                    TypeVal::Int | TypeVal::Bool | TypeVal::Void if g_regs_left > 0 => {
+                        self.add_lvalue(arg.lvalue(), arg_type, None);
+                        self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+                        g_regs_left -= 1;
+                    }
+                    TypeVal::Float if fp_regs_left > 0 => {
+                        self.add_lvalue(arg.lvalue(), arg_type, None);
+                        self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+                        fp_regs_left -= 1;
+                    }
+                    _ => {
+                        self.add_lvalue(arg.lvalue(), arg_type, Some(stack_args_offset));
+                        stack_args_offset.offset(-(type_size as i64));
+                    }
+                }
+                Ok(ret)
             })
             .collect::<miette::Result<Vec<_>>>()?
             .into_boxed_slice();
-        let ret = TypeVal::from_ast_type(ret_type, self)?;
 
         self.functions.insert(
             name,
@@ -222,7 +271,7 @@ impl<'a> Environment<'a> {
                 args,
                 ret,
                 name,
-                scope: self.cur_scope,
+                scope,
             },
         );
 
@@ -248,41 +297,80 @@ impl<'a> Environment<'a> {
         })
     }
 
-    pub fn new_scope(&mut self) -> usize {
+    fn new_scope_with_size(&mut self, size: u64, in_fn: bool) -> usize {
         self.scopes.push(Scope {
             names: HashMap::new(),
             parent: self.cur_scope,
+            cur_size: size,
+            in_fn,
         });
 
         self.cur_scope = self.scopes.len() - 1;
         self.cur_scope
     }
 
-    pub fn add_lvalue(&mut self, l_val: &LValue, var_type: TypeVal) -> miette::Result<()> {
-        let var_name = l_val.variable().loc();
-        self.check_name_free(var_name)?;
-        let name_str = var_name.as_str(self.src);
-        let bindings = l_val
-            .array_bindings()
-            .iter()
-            .flat_map(|t| t.iter())
-            .map(|s| s.loc().as_str(self.src))
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+    pub fn new_scope(&mut self) -> usize {
+        self.new_scope_with_size(
+            self.scopes[self.cur_scope].cur_size,
+            self.scopes[self.cur_scope].in_fn,
+        )
+    }
 
-        self.scopes[self.cur_scope].names.insert(
-            name_str,
-            VarInfo {
-                var_type: var_type.clone(),
-                bindings,
-            },
-        );
-
-        for arr_len_binding in l_val.array_bindings().iter().flat_map(|b| b.iter()) {
-            self.add_lvalue(&LValue::from_span(arr_len_binding.loc()), TypeVal::Int)?;
+    pub fn add_loop_bounds(&mut self, loop_vars: &[LoopVar]) -> miette::Result<()> {
+        // Add the space used for accumulator/pointer and looping bounds
+        let cur_scope = &mut self.scopes[self.cur_scope];
+        cur_scope.cur_size += WORD_SIZE as u64 + loop_vars.len() as u64 * WORD_SIZE as u64;
+        for LoopVar(name, _) in loop_vars {
+            self.add_name(*name, TypeVal::Int, None)?;
+            self.scopes[self.cur_scope].cur_size += WORD_SIZE;
         }
 
         Ok(())
+    }
+
+    pub fn add_let_lvalue(&mut self, l_val: &LValue, var_type: TypeVal) -> miette::Result<()> {
+        let type_size = self.type_size(&var_type);
+        self.add_lvalue(l_val, var_type, None)?;
+        self.scopes[self.cur_scope].cur_size += type_size;
+        Ok(())
+    }
+
+    fn add_lvalue(
+        &mut self,
+        l_val: &LValue,
+        var_type: TypeVal,
+        stack_loc: Option<StackLoc>,
+    ) -> miette::Result<()> {
+        let mut stack_loc = self.add_name(l_val.variable().loc(), var_type, stack_loc)?;
+        for Var(binding_name) in l_val.array_bindings().into_iter().flatten() {
+            self.add_name(*binding_name, TypeVal::Int, Some(stack_loc));
+            stack_loc.offset(8);
+        }
+        Ok(())
+    }
+
+    fn add_name(
+        &mut self,
+        name: Span,
+        var_type: TypeVal,
+        stack_loc: Option<StackLoc>,
+    ) -> miette::Result<StackLoc> {
+        self.check_name_free(name)?;
+        let cur_scope = &mut self.scopes[self.cur_scope];
+        let stack_loc = stack_loc.unwrap_or(if cur_scope.in_fn {
+            StackLoc::Local(cur_scope.cur_size as i64 + LOCAL_STACK_OFFSET)
+        } else {
+            StackLoc::Global(cur_scope.cur_size as i64 + GLOBAL_STACK_OFFSET)
+        });
+        let name_str = name.as_str(self.src);
+        cur_scope.names.insert(
+            name_str,
+            VarInfo {
+                var_type: var_type.clone(),
+                stack_loc,
+            },
+        );
+        Ok(stack_loc)
     }
 
     fn check_name_free(&mut self, name: Span) -> miette::Result<()> {
@@ -372,5 +460,15 @@ impl<'a> Environment<'a> {
 
     pub fn functions(&self) -> &HashMap<&'a str, FunctionInfo<'a>> {
         &self.functions
+    }
+
+    pub fn type_size(&self, ty: &TypeVal) -> u64 {
+        match ty {
+            TypeVal::Int | TypeVal::Bool | TypeVal::Float => WORD_SIZE,
+            TypeVal::Array(_, dims) => WORD_SIZE + WORD_SIZE * *dims as u64,
+            TypeVal::Struct(id) => self.get_struct_id(*id).size,
+            // IDK if this is correct.
+            TypeVal::Void => 0,
+        }
     }
 }

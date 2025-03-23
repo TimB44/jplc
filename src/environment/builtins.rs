@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use crate::{
+    asm_codegen::WORD_SIZE,
     environment::{VarInfo, GLOBAL_SCOPE_ID},
     typecheck::TypeVal,
 };
@@ -23,6 +24,7 @@ pub fn builtin_structs() -> (HashMap<&'static str, usize>, Vec<StructInfo<'stati
         .into_boxed_slice(),
         id: 0,
         name: "rgba",
+        size: WORD_SIZE * 4,
     }];
     assert_eq!(RGBA_STRUCT_ID, *struct_ids.get("rgba").unwrap());
     (struct_ids, struct_fields)
@@ -35,18 +37,19 @@ pub fn builtin_vars() -> Scope<'static> {
                 "args",
                 VarInfo {
                     var_type: TypeVal::Array(Box::new(TypeVal::Int), 1),
-                    bindings: vec![].into_boxed_slice(),
+                    stack_loc: super::StackLoc::Global(16),
                 },
             ),
             (
                 "argnum",
                 VarInfo {
                     var_type: TypeVal::Int,
-                    bindings: vec![].into_boxed_slice(),
+                    stack_loc: super::StackLoc::Global(16),
                 },
             ),
         ]),
         parent: GLOBAL_SCOPE_ID,
+        cur_size: 16,
     }
 }
 
