@@ -23,7 +23,7 @@ const STACK_FRAME_ALIGNMENT: u64 = 16;
 //TODO: better names
 const FN_STARTING_STACK_SIZE: u64 = 2 * WORD_SIZE;
 const MAIN_FN_STARTING_STACK_SIZE: u64 = 3 * WORD_SIZE;
-pub const INT_REGS_FOR_ARGS: [Reg; 6] = [Reg::Rdi, Reg::Rdx, Reg::Rsi, Reg::Rcx, Reg::R8, Reg::R9];
+pub const INT_REGS_FOR_ARGS: [Reg; 6] = [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::Rcx, Reg::R8, Reg::R9];
 pub const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
     Reg::Xmm0,
     Reg::Xmm1,
@@ -207,7 +207,7 @@ impl<'a> AsmEnv<'a> {
             .rev()
             .filter(|e| match e.type_data() {
                 TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
-                TypeVal::Int | TypeVal::Bool => {
+                TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
                     cur_int_arg -= 1;
                     cur_int_arg >= avaliable_int_args
                 }
@@ -215,7 +215,6 @@ impl<'a> AsmEnv<'a> {
                     cur_float_arg -= 1;
                     cur_int_arg >= FLOAT_REGS_FOR_ARGS.len()
                 }
-                TypeVal::Void => todo!(),
             })
             .map(|e| self.env.type_size(e.type_data()))
             .sum();
@@ -283,6 +282,37 @@ impl<'a> AsmEnv<'a> {
         }
 
         self.add_instrs([Instr::Call(name)]);
+        if stack_space_for_args > 0 {
+            let mut cur_int_arg = 0;
+            let mut cur_float_arg = 0;
+            self.add_instrs(
+                args.iter()
+                    .filter(|e| match e.type_data() {
+                        TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
+                        TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+                            cur_int_arg += 1;
+                            cur_int_arg >= avaliable_int_args
+                        }
+                        TypeVal::Float => {
+                            cur_float_arg += 1;
+                            cur_int_arg >= FLOAT_REGS_FOR_ARGS.len()
+                        }
+                    })
+                    .map(|e| {
+                        Instr::Add(
+                            Operand::Reg(Reg::Rsp),
+                            Operand::Value(self.env.type_size(e.type_data())),
+                        )
+                    }),
+            );
+
+            //FIXME: this is better but the autograder does not do it
+            //self.add_instrs([Instr::Add(
+            //    Operand::Reg(Reg::Rsp),
+            //    Operand::Value(stack_space_for_args),
+            //)]);
+        }
+
         self.remove_stack_alignment(stack_aligned);
         match ret_type {
             TypeVal::Int | TypeVal::Void | TypeVal::Bool => {

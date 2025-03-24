@@ -342,7 +342,7 @@ impl<'a> Environment<'a> {
     ) -> miette::Result<()> {
         let mut stack_loc = self.add_name(l_val.variable().loc(), var_type, stack_loc)?;
         // Skip the pointer
-        for Var(binding_name) in l_val.array_bindings().into_iter().flatten().rev() {
+        for Var(binding_name) in l_val.array_bindings().into_iter().flatten() {
             self.add_name(*binding_name, TypeVal::Int, Some(stack_loc))?;
             stack_loc -= WORD_SIZE as i64;
         }
