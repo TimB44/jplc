@@ -318,7 +318,7 @@ impl<'a> Environment<'a> {
     pub fn add_loop_bounds(&mut self, loop_vars: &[LoopVar]) -> miette::Result<()> {
         // Add the space used for accumulator/pointer and looping bounds
         let cur_scope = &mut self.scopes[self.cur_scope];
-        cur_scope.cur_size += WORD_SIZE as u64 + loop_vars.len() as u64 * WORD_SIZE as u64;
+        cur_scope.cur_size += WORD_SIZE + loop_vars.len() as u64 * WORD_SIZE;
         for LoopVar(name, _) in loop_vars {
             self.scopes[self.cur_scope].cur_size += WORD_SIZE;
             self.add_name(*name, TypeVal::Int, None)?;

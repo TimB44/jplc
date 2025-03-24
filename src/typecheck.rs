@@ -99,7 +99,7 @@ impl TypeVal {
                 s.push_str("(TupleType");
                 let info = env.get_struct_id(*id);
                 for (_, ty) in info.fields() {
-                    s.push_str(" ");
+                    s.push(' ');
                     ty.write_type_string(s, env);
                 }
 
@@ -138,7 +138,7 @@ impl TypeVal {
                 s.push_str("(TupleType");
                 let info = env.get_struct_id(*id);
                 for (_, ty) in info.fields() {
-                    s.push_str(" ");
+                    s.push(' ');
                     ty.write_type_string(&mut s, env);
                 }
 

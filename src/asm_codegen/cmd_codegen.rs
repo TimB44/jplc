@@ -5,12 +5,12 @@ use crate::{
 };
 
 use super::{
-    fragments::{EPILOGUE, PROLOGE},
+    fragments::PROLOGE,
     AsmEnv, AsmFn, ConstKind, Instr, MemLoc, Operand, Reg, FLOAT_REGS_FOR_ARGS, INT_REGS_FOR_ARGS,
     MAIN_FN_IDX,
 };
 
-impl<'a> AsmEnv<'a> {
+impl AsmEnv<'_> {
     pub fn gen_asm_cmd(&mut self, cmd: &Cmd) {
         match cmd.kind() {
             CmdKind::ReadImage(_, lvalue) => todo!(),
@@ -56,12 +56,12 @@ impl<'a> AsmEnv<'a> {
                 let mut int_regs = &INT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
                 let mut fp_regs = &FLOAT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
                 self.add_instrs(fn_info.args().iter().filter_map(|arg| match arg {
-                    TypeVal::Int | TypeVal::Bool | TypeVal::Void if int_regs.len() > 0 => {
+                    TypeVal::Int | TypeVal::Bool | TypeVal::Void if !int_regs.is_empty() => {
                         let reg = int_regs[0];
                         int_regs = &int_regs[1..];
                         Some(Instr::Push(reg))
                     }
-                    TypeVal::Float if fp_regs.len() > 0 => {
+                    TypeVal::Float if !fp_regs.is_empty() => {
                         let reg = fp_regs[0];
                         fp_regs = &fp_regs[1..];
                         Some(Instr::Push(reg))

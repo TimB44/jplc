@@ -68,7 +68,7 @@ impl SExpr for Program {
         opt: crate::parse::SExprOptions,
     ) -> std::fmt::Result {
         for cmd in &self.commands {
-            write!(f, "{}\n", Displayable(cmd, env, opt))?;
+            writeln!(f, "{}", Displayable(cmd, env, opt))?;
         }
         Ok(())
     }

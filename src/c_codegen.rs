@@ -110,7 +110,7 @@ impl<'a, 'b> CGenEnv<'a, 'b> {
 
         self.defs.push_str("typedef struct {\n");
         for dim in 0..rank {
-            write!(self.defs, "  int64_t d{};\n", dim).expect("string should not fail to write");
+            writeln!(self.defs, "  int64_t d{};", dim).expect("string should not fail to write");
         }
 
         self.defs.push_str("  ");
@@ -134,14 +134,14 @@ impl<'a, 'b> CGenEnv<'a, 'b> {
     fn write_assign_stmt_begining(&mut self, t: &TypeVal) -> Ident<'static> {
         let cur_fn = &mut self.fns[self.cur_fn];
         cur_fn.src.push_str(INDENTATION);
-        write_type(&mut cur_fn.src, &t, self.env);
+        write_type(&mut cur_fn.src, t, self.env);
         let sym = cur_fn.gen_sym();
         write!(cur_fn.src, " {} = ", sym).expect("string should not fail to write");
         sym
     }
 
     fn write_label(&mut self, label: u32) {
-        write!(self.cur_fn().src(), "{}_jump{}:;\n", INDENTATION, label)
+        writeln!(self.cur_fn().src(), "{}_jump{}:;", INDENTATION, label)
             .expect("string should not fail to write");
     }
 
@@ -149,7 +149,7 @@ impl<'a, 'b> CGenEnv<'a, 'b> {
         let cur_fn = &mut self.fns[self.cur_fn];
         cur_fn.src().push_str(INDENTATION);
         write_type(cur_fn.src(), ty, self.env);
-        cur_fn.src().push_str(" ");
+        cur_fn.src().push(' ');
         let sym = cur_fn.gen_sym();
         write!(cur_fn.src(), "{}", sym).expect("string should not fail to write");
         cur_fn.src().push_str(";\n");
@@ -157,7 +157,7 @@ impl<'a, 'b> CGenEnv<'a, 'b> {
     }
 
     fn write_goto(&mut self, label: u32) {
-        write!(self.cur_fn().src(), "{}goto _jump{};\n", INDENTATION, label)
+        writeln!(self.cur_fn().src(), "{}goto _jump{};", INDENTATION, label)
             .expect("string should not fail to write");
     }
 
@@ -192,7 +192,7 @@ impl Display for Ident<'_> {
     }
 }
 
-impl<'a> CFn<'a> {
+impl CFn<'_> {
     //TOOD: add main method function header
     fn new_main() -> Self {
         Self {
@@ -256,7 +256,7 @@ macro_rules! write_stmt {
     };
 }
 
-pub(self) use write_stmt;
+ use write_stmt;
 macro_rules! write_assign_stmt {
     ($cenv:expr, $ty:expr, $($args:tt)*) => {
         {
@@ -270,7 +270,7 @@ macro_rules! write_assign_stmt {
     };
 }
 
-pub(self) use write_assign_stmt;
+ use write_assign_stmt;
 
 macro_rules! write_if_stmt {
     ($cenv:expr, $format:literal, $($args:tt)*) => {
@@ -294,7 +294,7 @@ macro_rules! write_if_stmt {
     };
 }
 
-pub(self) use write_if_stmt;
+ use write_if_stmt;
 
 fn codegen_cmd(cmd: &Cmd, cenv: &mut CGenEnv<'_, '_>) {
     match cmd.kind() {
@@ -339,7 +339,7 @@ fn codegen_cmd(cmd: &Cmd, cenv: &mut CGenEnv<'_, '_>) {
             cur_fn_src.push_str("show(");
             write_type_string_lit(cur_fn_src, expr.type_data(), cenv.env);
 
-            write!(cur_fn_src, ", &{});\n", expr_ident).expect("string should not fail to write");
+            writeln!(cur_fn_src, ", &{});", expr_ident).expect("string should not fail to write");
         }
 
         CmdKind::Time(cmd) => {
@@ -361,9 +361,9 @@ fn codegen_cmd(cmd: &Cmd, cenv: &mut CGenEnv<'_, '_>) {
 
             let src = &mut cenv.fns[cenv.cur_fn].src;
             write_type(src, fn_info.ret(), cenv.env);
-            src.push_str(" ");
+            src.push(' ');
             src.push_str(name.loc().as_str(cenv.env.src()));
-            src.push_str("(");
+            src.push('(');
             for (arg_type, binding) in fn_info.args().iter().zip(params) {
                 let name = binding.lvalue().variable().loc().as_str(cenv.env.src());
                 codegen_lvalue(cenv, binding.lvalue(), Ident::Global(name));
@@ -416,7 +416,7 @@ fn codegen_cmd(cmd: &Cmd, cenv: &mut CGenEnv<'_, '_>) {
                 for (name, jpl_type) in struct_info.fields() {
                     cenv.defs.push_str(INDENTATION);
                     write_type(&mut cenv.defs, jpl_type, cenv.env);
-                    cenv.defs.push_str(" ");
+                    cenv.defs.push(' ');
                     cenv.defs.push_str(name);
                     cenv.defs.push_str(";\n");
                 }
@@ -451,7 +451,7 @@ fn codegen_assert(cenv: &mut CGenEnv<'_, '_>, expr: &Expr, msg: &Str) {
     cenv.write_label(label);
 }
 
-fn codegen_lvalue<'a, 'b>(cenv: &mut CGenEnv<'a, 'b>, lvalue: &LValue, rvalue: Ident<'b>) {
+fn codegen_lvalue<'b>(cenv: &mut CGenEnv<'_, 'b>, lvalue: &LValue, rvalue: Ident<'b>) {
     let lvalue_name = lvalue.variable().loc().as_str(cenv.env.src());
     cenv.cur_fn().sym_tab.insert(lvalue_name, rvalue);
     for (dim, dim_span) in lvalue.array_bindings().into_iter().flatten().enumerate() {
@@ -472,7 +472,7 @@ fn codegen_lvalue<'a, 'b>(cenv: &mut CGenEnv<'a, 'b>, lvalue: &LValue, rvalue: I
     }
 }
 
-fn expr_to_ident<'a, 'b>(expr: &Expr, cenv: &mut CGenEnv<'a, 'b>) -> Ident<'b> {
+fn expr_to_ident<'b>(expr: &Expr, cenv: &mut CGenEnv<'_, 'b>) -> Ident<'b> {
     match &expr.kind() {
         ExprKind::IntLit(val) => {
             assert_eq!(expr.type_data(), &TypeVal::Int);
@@ -535,7 +535,7 @@ fn expr_to_ident<'a, 'b>(expr: &Expr, cenv: &mut CGenEnv<'a, 'b>) -> Ident<'b> {
                 write_stmt!(cenv, "{}.data[{}] = {}", arr_ident, i, ident);
             }
 
-            cenv.gen_arr_struct(&arr_type);
+            cenv.gen_arr_struct(arr_type);
             arr_ident
         }
         ExprKind::StructInit(_, fields) => {
@@ -772,12 +772,12 @@ fn expr_to_ident<'a, 'b>(expr: &Expr, cenv: &mut CGenEnv<'a, 'b>) -> Ident<'b> {
         ExprKind::GreaterThanEq(args) => codegen_binop(cenv, ">=", args, &TypeVal::Bool),
         ExprKind::Eq(args) => codegen_binop(cenv, "==", args, &TypeVal::Bool),
         ExprKind::NotEq(args) => codegen_binop(cenv, "!=", args, &TypeVal::Bool),
-        ExprKind::Add(args) => codegen_binop(cenv, "+", args, &expr.type_data()),
-        ExprKind::Minus(args) => codegen_binop(cenv, "-", args, &expr.type_data()),
-        ExprKind::Mulitply(args) => codegen_binop(cenv, "*", args, &expr.type_data()),
-        ExprKind::Divide(args) => codegen_binop(cenv, "/", args, &expr.type_data()),
+        ExprKind::Add(args) => codegen_binop(cenv, "+", args, expr.type_data()),
+        ExprKind::Minus(args) => codegen_binop(cenv, "-", args, expr.type_data()),
+        ExprKind::Mulitply(args) => codegen_binop(cenv, "*", args, expr.type_data()),
+        ExprKind::Divide(args) => codegen_binop(cenv, "/", args, expr.type_data()),
         ExprKind::Modulo(args) => match expr.type_data() {
-            TypeVal::Int => codegen_binop(cenv, "%", args, &expr.type_data()),
+            TypeVal::Int => codegen_binop(cenv, "%", args, expr.type_data()),
             TypeVal::Float => {
                 let [lhs, rhs] = &**args;
                 let lhs_ident = expr_to_ident(lhs, cenv);
@@ -799,8 +799,8 @@ fn expr_to_ident<'a, 'b>(expr: &Expr, cenv: &mut CGenEnv<'a, 'b>) -> Ident<'b> {
     }
 }
 
-fn codegen_binop<'a, 'b>(
-    env: &mut CGenEnv<'a, 'b>,
+fn codegen_binop<'b>(
+    env: &mut CGenEnv<'_, 'b>,
     op: &str,
     args: &[Expr; 2],
     output: &TypeVal,

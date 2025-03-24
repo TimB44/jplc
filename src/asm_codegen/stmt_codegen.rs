@@ -6,7 +6,7 @@ use crate::{
 
 use super::{fragments::EPILOGUE, AsmEnv, Instr, MemLoc, Operand, Reg, WORD_SIZE};
 
-impl<'a> AsmEnv<'a> {
+impl AsmEnv<'_> {
     pub fn gen_asm_stmt(&mut self, stmt: &Stmt) {
         match stmt.kind() {
             StmtType::Let(_, expr) => {

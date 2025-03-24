@@ -3,7 +3,6 @@ use std::borrow::Cow;
 use crate::{
     asm_codegen::{MAIN_FN_IDX, WORD_SIZE},
     ast::expr::{Expr, ExprKind},
-    environment::GLOBAL_SCOPE_ID,
     typecheck::TypeVal,
 };
 
@@ -12,7 +11,7 @@ const MOD_BY_ZERO_ERR_MSG: &str = "mod by zero";
 
 use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
-impl<'a> AsmEnv<'a> {
+impl AsmEnv<'_> {
     pub fn gen_asm_expr(&mut self, expr: &Expr) {
         match expr.kind() {
             ExprKind::IntLit(val) => {
@@ -42,7 +41,7 @@ impl<'a> AsmEnv<'a> {
                     .expect("variable should be valid after typechecking");
                 let type_size = self.env.type_size(var_info.var_type());
 
-                let mut cur_scope = self.cur_scope;
+                let cur_scope = self.cur_scope;
                 let is_local = self.env.is_local_var(expr.loc(), self.cur_scope);
 
                 let memloc = if self.cur_fn == MAIN_FN_IDX || is_local {
@@ -104,7 +103,7 @@ impl<'a> AsmEnv<'a> {
                     .get_function(*name)
                     .expect("function should exist after typechecking");
 
-                self.call_fn(fn_info.name(), &args, fn_info.ret());
+                self.call_fn(fn_info.name(), args, fn_info.ret());
             }
             ExprKind::FieldAccess(expr, span) => todo!(),
             ExprKind::ArrayIndex(expr, exprs) => todo!(),

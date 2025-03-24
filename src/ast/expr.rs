@@ -5,7 +5,6 @@ use std::fmt::{Formatter, Write};
 
 use super::{super::parse::parse_sequence, auxiliary::LoopVar, expect_tokens, Parse, TokenStream};
 use crate::{
-    ast::auxiliary::LValue,
     environment::Environment,
     lex::TokenType,
     parse::{Displayable, SExpr, SExprOptions},
@@ -431,7 +430,7 @@ impl Expr {
         let inner = Self::parse_unary(ts, env)?;
         let loc = unary_op_token.loc().join(inner.loc);
         let type_data = inner.type_data.clone();
-        inner.expect_one_of_types(&ty, env)?;
+        inner.expect_one_of_types(ty, env)?;
 
         Ok(Self {
             loc,

@@ -89,7 +89,7 @@ impl<'a> AsmEnv<'a> {
         }
         let next_id = self.consts.len() as u64;
         self.consts.insert(val.clone(), next_id);
-        return next_id;
+        next_id
     }
 
     fn add_asm(&mut self, instrs: impl IntoIterator<Item = Asm<'a>>) {
@@ -133,7 +133,7 @@ impl<'a> AsmEnv<'a> {
     }
 
     fn add_instrs(&mut self, instrs: impl IntoIterator<Item = Instr<'a>>) {
-        self.add_asm(instrs.into_iter().map(|i| Asm::Instr(i)))
+        self.add_asm(instrs.into_iter().map(Asm::Instr))
     }
 
     // TODO memosize result
@@ -148,7 +148,7 @@ impl<'a> AsmEnv<'a> {
         if cur_alignment ^ adjustment_aligned {
             self.add_instrs([Instr::Sub(
                 Operand::Reg(Reg::Rsp),
-                Operand::Value(WORD_SIZE as u64),
+                Operand::Value(WORD_SIZE),
             )]);
 
             true
@@ -161,7 +161,7 @@ impl<'a> AsmEnv<'a> {
         if stack_was_aligned {
             self.add_instrs([Instr::Add(
                 Operand::Reg(Reg::Rsp),
-                Operand::Value(WORD_SIZE as u64),
+                Operand::Value(WORD_SIZE),
             )]);
         }
     }
@@ -331,7 +331,6 @@ impl<'a> AsmEnv<'a> {
             //	mov r10, [rsp + 8]
             //	mov [rax + 8], r10
             (0..size as usize)
-                .into_iter()
                 .step_by(WORD_SIZE as usize)
                 .rev()
                 .flat_map(|offset| {
@@ -354,12 +353,12 @@ impl<'a> AsmFn<'a> {
     fn new(name: &'a str) -> Self {
         Self {
             text: vec![Asm::FnLabel(name)],
-            cur_stack_size: STARTING_ALIGNMENT as u64,
+            cur_stack_size: STARTING_ALIGNMENT,
         }
     }
 
     fn aligned(&self) -> bool {
-        self.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0
+        self.cur_stack_size % STACK_FRAME_ALIGNMENT == 0
     }
 }
 

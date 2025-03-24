@@ -32,16 +32,16 @@ pub trait SExpr {
 
 pub struct Displayable<'a, 'b, T>(pub &'a T, pub &'a Environment<'b>, pub SExprOptions);
 
-impl<'a, 'b, T: SExpr> Display for Displayable<'a, 'b, T> {
+impl<T: SExpr> Display for Displayable<'_, '_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.0.to_s_expr(f, &self.1, self.2)
+        self.0.to_s_expr(f, self.1, self.2)
     }
 }
 
-impl<'a, 'b, T: SExpr> Display for Displayable<'a, 'b, Box<[T]>> {
+impl<T: SExpr> Display for Displayable<'_, '_, Box<[T]>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for (i, item) in self.0.iter().enumerate() {
-            write!(f, " {}", Displayable(item, &self.1, self.2))?;
+            write!(f, " {}", Displayable(item, self.1, self.2))?;
         }
         Ok(())
     }

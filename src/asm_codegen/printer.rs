@@ -12,7 +12,7 @@ impl Display for AsmEnv<'_> {
         for asm in HEADER {
             write!(f, "{}", asm)?;
         }
-        write!(f, "\n")?;
+        writeln!(f)?;
 
         write!(f, "{}", Asm::Section(Section::Data))?;
 
@@ -24,13 +24,13 @@ impl Display for AsmEnv<'_> {
             // Clone not ideal
             write!(f, "{}", Asm::Const(*id, c.clone()))?;
         }
-        write!(f, "\n")?;
+        writeln!(f)?;
         write!(f, "{}", Asm::Section(Section::Text))?;
         for AsmFn { text, .. } in self.fns.iter().skip(1).chain([&self.fns[MAIN_FN_IDX]]) {
             for asm in text {
                 write!(f, "{}", asm)?;
             }
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
         Ok(())
     }
@@ -38,13 +38,13 @@ impl Display for AsmEnv<'_> {
 impl Display for Asm<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Asm::Global(s) => write!(f, "global {}\n", s),
-            Asm::Extern(s) => write!(f, "extern {}\n", s),
-            Asm::Section(section) => write!(f, "section {}\n", section),
-            Asm::Const(id, const_kind) => write!(f, "const{}: {}\n", id, const_kind),
-            Asm::Instr(instr) => write!(f, "{}{}\n", INDENTATION, instr),
+            Asm::Global(s) => writeln!(f, "global {}", s),
+            Asm::Extern(s) => writeln!(f, "extern {}", s),
+            Asm::Section(section) => writeln!(f, "section {}", section),
+            Asm::Const(id, const_kind) => writeln!(f, "const{}: {}", id, const_kind),
+            Asm::Instr(instr) => writeln!(f, "{}{}", INDENTATION, instr),
             Asm::FnLabel(name) => write!(f, "{}:\n_{}:\n", name, name),
-            Asm::JumpLabel(id) => write!(f, ".jump{}:\n", id),
+            Asm::JumpLabel(id) => writeln!(f, ".jump{}:", id),
         }
     }
 }
@@ -72,9 +72,9 @@ impl Display for Instr<'_> {
                 }
                 // use a sub an add instead
                 RegKind::Float => {
-                    write!(
+                    writeln!(
                         f,
-                        "{}\n",
+                        "{}",
                         Instr::Sub(Operand::Reg(Reg::Rsp), Operand::Value(WORD_SIZE))
                     )?;
                     write!(
@@ -91,9 +91,9 @@ impl Display for Instr<'_> {
                 }
                 // use a sub an add instead
                 RegKind::Float => {
-                    write!(
+                    writeln!(
                         f,
-                        "{}\n",
+                        "{}",
                         Instr::Mov(Operand::Reg(*reg), Operand::Mem(MemLoc::Reg(Reg::Rsp)))
                     )?;
                     write!(
