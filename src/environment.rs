@@ -25,8 +25,7 @@ pub struct Environment<'a> {
 }
 
 pub const GLOBAL_SCOPE_ID: usize = 0;
-const LOCAL_STACK_OFFSET: i64 = 8;
-const GLOBAL_STACK_OFFSET: i64 = 16;
+pub const STACK_ARGS_OFFSET: i64 = -16;
 
 #[derive(Debug, Clone)]
 pub struct StructInfo<'a> {
@@ -67,26 +66,27 @@ pub struct Scope<'a> {
     /// The index of its parent scope in the vec of scopes. 0 is always the index of the global
     /// scope. The parent of the global scope will be itself
     parent: usize,
-    in_fn: bool,
+}
+
+impl<'a> Scope<'a> {
+    pub fn names(&self) -> &HashMap<&'a str, VarInfo> {
+        &self.names
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct VarInfo {
     var_type: TypeVal,
-    stack_loc: StackLoc,
-    //bindings: Box<[&'a str]>,
+    stack_loc: i64,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum StackLoc {
-    Local(i64),
-    Global(i64),
-}
-impl StackLoc {
-    fn offset(&mut self, offset: i64) {
-        match self {
-            StackLoc::Local(cur) | StackLoc::Global(cur) => *cur += offset,
-        }
+impl VarInfo {
+    pub fn stack_loc(&self) -> i64 {
+        self.stack_loc
+    }
+
+    pub fn var_type(&self) -> &TypeVal {
+        &self.var_type
     }
 }
 
@@ -117,6 +117,9 @@ impl<'a> Environment<'a> {
             scopes: vec![builtin_vars()],
             cur_scope: GLOBAL_SCOPE_ID,
         }
+    }
+    pub fn get_scope(&self, scope: usize) -> &Scope {
+        &self.scopes[scope]
     }
 
     pub fn add_struct(&mut self, Var(name): Var, params: &[StructField]) -> miette::Result<()> {
@@ -222,7 +225,7 @@ impl<'a> Environment<'a> {
         ret_type: &Type,
     ) -> miette::Result<usize> {
         assert!(self.cur_scope == GLOBAL_SCOPE_ID);
-        let scope = self.new_scope_with_size(0, true);
+        let scope = self.new_scope_with_size(0);
         let ret = TypeVal::from_ast_type(ret_type, self)?;
 
         self.check_name_free(name)?;
@@ -236,7 +239,7 @@ impl<'a> Environment<'a> {
                 0
             };
         let mut fp_regs_left = FLOAT_REGS_FOR_ARGS.len();
-        let mut stack_args_offset = StackLoc::Local(-16);
+        let mut stack_args_offset = STACK_ARGS_OFFSET;
 
         let args = args
             .iter()
@@ -246,18 +249,18 @@ impl<'a> Environment<'a> {
                 let ret = arg_type.clone();
                 match &arg_type {
                     TypeVal::Int | TypeVal::Bool | TypeVal::Void if g_regs_left > 0 => {
-                        self.add_lvalue(arg.lvalue(), arg_type, None);
                         self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+                        self.add_lvalue(arg.lvalue(), arg_type, None)?;
                         g_regs_left -= 1;
                     }
                     TypeVal::Float if fp_regs_left > 0 => {
-                        self.add_lvalue(arg.lvalue(), arg_type, None);
                         self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+                        self.add_lvalue(arg.lvalue(), arg_type, None)?;
                         fp_regs_left -= 1;
                     }
                     _ => {
-                        self.add_lvalue(arg.lvalue(), arg_type, Some(stack_args_offset));
-                        stack_args_offset.offset(-(type_size as i64));
+                        self.add_lvalue(arg.lvalue(), arg_type, Some(stack_args_offset))?;
+                        stack_args_offset -= type_size as i64;
                     }
                 }
                 Ok(ret)
@@ -282,7 +285,7 @@ impl<'a> Environment<'a> {
         self.cur_scope = self.scopes[self.cur_scope].parent;
     }
 
-    pub fn get_function(&self, name: Span) -> miette::Result<&FunctionInfo> {
+    pub fn get_function(&self, name: Span) -> miette::Result<&FunctionInfo<'a>> {
         let name_str = name.as_str(self.src);
         self.functions.get(name_str).ok_or_else(|| {
             miette!(
@@ -297,12 +300,11 @@ impl<'a> Environment<'a> {
         })
     }
 
-    fn new_scope_with_size(&mut self, size: u64, in_fn: bool) -> usize {
+    fn new_scope_with_size(&mut self, size: u64) -> usize {
         self.scopes.push(Scope {
             names: HashMap::new(),
             parent: self.cur_scope,
             cur_size: size,
-            in_fn,
         });
 
         self.cur_scope = self.scopes.len() - 1;
@@ -310,10 +312,7 @@ impl<'a> Environment<'a> {
     }
 
     pub fn new_scope(&mut self) -> usize {
-        self.new_scope_with_size(
-            self.scopes[self.cur_scope].cur_size,
-            self.scopes[self.cur_scope].in_fn,
-        )
+        self.new_scope_with_size(self.scopes[self.cur_scope].cur_size)
     }
 
     pub fn add_loop_bounds(&mut self, loop_vars: &[LoopVar]) -> miette::Result<()> {
@@ -321,8 +320,8 @@ impl<'a> Environment<'a> {
         let cur_scope = &mut self.scopes[self.cur_scope];
         cur_scope.cur_size += WORD_SIZE as u64 + loop_vars.len() as u64 * WORD_SIZE as u64;
         for LoopVar(name, _) in loop_vars {
-            self.add_name(*name, TypeVal::Int, None)?;
             self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+            self.add_name(*name, TypeVal::Int, None)?;
         }
 
         Ok(())
@@ -330,8 +329,8 @@ impl<'a> Environment<'a> {
 
     pub fn add_let_lvalue(&mut self, l_val: &LValue, var_type: TypeVal) -> miette::Result<()> {
         let type_size = self.type_size(&var_type);
-        self.add_lvalue(l_val, var_type, None)?;
         self.scopes[self.cur_scope].cur_size += type_size;
+        self.add_lvalue(l_val, var_type, None)?;
         Ok(())
     }
 
@@ -339,12 +338,13 @@ impl<'a> Environment<'a> {
         &mut self,
         l_val: &LValue,
         var_type: TypeVal,
-        stack_loc: Option<StackLoc>,
+        stack_loc: Option<i64>,
     ) -> miette::Result<()> {
         let mut stack_loc = self.add_name(l_val.variable().loc(), var_type, stack_loc)?;
-        for Var(binding_name) in l_val.array_bindings().into_iter().flatten() {
-            self.add_name(*binding_name, TypeVal::Int, Some(stack_loc));
-            stack_loc.offset(8);
+        // Skip the pointer
+        for Var(binding_name) in l_val.array_bindings().into_iter().flatten().rev() {
+            self.add_name(*binding_name, TypeVal::Int, Some(stack_loc))?;
+            stack_loc -= WORD_SIZE as i64;
         }
         Ok(())
     }
@@ -353,15 +353,11 @@ impl<'a> Environment<'a> {
         &mut self,
         name: Span,
         var_type: TypeVal,
-        stack_loc: Option<StackLoc>,
-    ) -> miette::Result<StackLoc> {
+        stack_loc: Option<i64>,
+    ) -> miette::Result<i64> {
         self.check_name_free(name)?;
         let cur_scope = &mut self.scopes[self.cur_scope];
-        let stack_loc = stack_loc.unwrap_or(if cur_scope.in_fn {
-            StackLoc::Local(cur_scope.cur_size as i64 + LOCAL_STACK_OFFSET)
-        } else {
-            StackLoc::Global(cur_scope.cur_size as i64 + GLOBAL_STACK_OFFSET)
-        });
+        let stack_loc = stack_loc.unwrap_or(cur_scope.cur_size as i64);
         let name_str = name.as_str(self.src);
         cur_scope.names.insert(
             name_str,
@@ -407,14 +403,13 @@ impl<'a> Environment<'a> {
 
         Ok(())
     }
-
-    pub fn get_variable_type(&self, var: Span) -> miette::Result<&TypeVal> {
-        let mut current_scope_id = self.cur_scope;
+    pub fn get_variable_info(&self, var: Span, scope: usize) -> miette::Result<&VarInfo> {
+        let mut current_scope_id = scope;
         let name = var.as_str(self.src);
         loop {
             let current_scope = &self.scopes[current_scope_id];
             if let Some(t) = current_scope.names.get(name) {
-                return Ok(&t.var_type);
+                return Ok(t);
             }
 
             if current_scope.parent == current_scope_id {
@@ -456,6 +451,11 @@ impl<'a> Environment<'a> {
                 "Invalid variable found"
             ))
         }
+    }
+
+    pub fn get_variable_type(&self, var: Span) -> miette::Result<&TypeVal> {
+        self.get_variable_info(var, self.cur_scope)
+            .map(|var_info| &var_info.var_type)
     }
 
     pub fn functions(&self) -> &HashMap<&'a str, FunctionInfo<'a>> {

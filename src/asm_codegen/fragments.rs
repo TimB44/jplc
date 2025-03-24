@@ -26,25 +26,25 @@ pub const HEADER: &[Asm] = &[
     Asm::Extern("_to_int"),
     Asm::Extern("_to_float"),
 ];
-pub const MAIN_PROLOGE: &[Asm] = &[
+pub const MAIN_PROLOGE: [Asm; 4] = [
     Asm::Instr(Instr::Push(Reg::Rbp)),
     Asm::Instr(Instr::Mov(Operand::Reg(Reg::Rbp), Operand::Reg(Reg::Rsp))),
     Asm::Instr(Instr::Push(Reg::R12)),
     Asm::Instr(Instr::Mov(Operand::Reg(Reg::R12), Operand::Reg(Reg::Rbp))),
 ];
 
-pub const MAIN_EPILOGUE: &[Asm] = &[
+pub const MAIN_EPILOGUE: [Asm; 3] = [
     Asm::Instr(Instr::Pop(Reg::R12)),
     Asm::Instr(Instr::Pop(Reg::Rbp)),
     Asm::Instr(Instr::Ret),
 ];
 
-pub const PROLOGE: &[Asm] = &[
+pub const PROLOGE: [Asm; 2] = [
     Asm::Instr(Instr::Push(Reg::Rbp)),
     Asm::Instr(Instr::Mov(Operand::Reg(Reg::Rbp), Operand::Reg(Reg::Rsp))),
 ];
 
-pub const EPILOGUE: &[Asm] = &[Asm::Instr(Instr::Pop(Reg::Rbp)), Asm::Instr(Instr::Ret)];
+pub const EPILOGUE: [Asm; 2] = [Asm::Instr(Instr::Pop(Reg::Rbp)), Asm::Instr(Instr::Ret)];
 
 pub fn load_const(const_id: u64) -> [Instr<'static>; 2] {
     [

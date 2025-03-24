@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 
 use crate::{
+    asm_codegen::{MAIN_FN_IDX, WORD_SIZE},
     ast::expr::{Expr, ExprKind},
+    environment::GLOBAL_SCOPE_ID,
     typecheck::TypeVal,
 };
 
@@ -10,7 +12,7 @@ const MOD_BY_ZERO_ERR_MSG: &str = "mod by zero";
 
 use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
-impl<'a, 'b> AsmEnv<'a, 'b> {
+impl<'a> AsmEnv<'a> {
     pub fn gen_asm_expr(&mut self, expr: &Expr) {
         match expr.kind() {
             ExprKind::IntLit(val) => {
@@ -33,7 +35,48 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
 
                 self.add_instrs(load_const(const_id));
             }
-            ExprKind::Var => todo!(),
+            ExprKind::Var => {
+                let var_info = self
+                    .env
+                    .get_variable_info(expr.loc(), self.cur_scope)
+                    .expect("variable should be valid after typechecking");
+                let type_size = self.env.type_size(var_info.var_type());
+                let is_global = self
+                    .env
+                    .get_scope(GLOBAL_SCOPE_ID)
+                    .names()
+                    .contains_key(expr.loc().as_str(self.env.src()));
+
+                let memloc = if self.cur_fn == MAIN_FN_IDX || !is_global {
+                    MemLoc::LocalOffset
+                } else {
+                    MemLoc::GlobalOffset
+                };
+                self.add_instrs(
+                    [Instr::Sub(
+                        Operand::Reg(Reg::Rsp),
+                        Operand::Value(type_size),
+                    )]
+                    .into_iter()
+                    .chain(
+                        (0..(type_size as usize))
+                            .step_by(WORD_SIZE as usize)
+                            .rev()
+                            .flat_map(|offset| {
+                                [
+                                    Instr::Mov(
+                                        Operand::Reg(Reg::R10),
+                                        Operand::Mem(memloc(var_info.stack_loc(), offset as u64)),
+                                    ),
+                                    Instr::Mov(
+                                        Operand::Mem(MemLoc::RegOffset(Reg::Rsp, offset as i64)),
+                                        Operand::Reg(Reg::R10),
+                                    ),
+                                ]
+                            }),
+                    ),
+                );
+            }
             ExprKind::Void => todo!(),
             ExprKind::Paren(expr) => self.gen_asm_expr(expr.as_ref()),
             ExprKind::ArrayLit(exprs) => {
@@ -45,36 +88,26 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
 
                 self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rdi), Operand::Value(arr_size))]);
 
-                let stack_aligend = dbg!(self.align_stack(0));
+                let stack_aligend = self.align_stack(0);
                 self.add_instrs([Instr::Call("jpl_alloc")]);
                 self.remove_stack_alignment(stack_aligend);
-
-                self.add_instrs(
-                    (0..(arr_size / 8))
-                        .rev()
-                        .flat_map(|i| {
-                            let offset = i * 8;
-                            [
-                                Instr::Mov(
-                                    Operand::Reg(Reg::R10),
-                                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, offset as i64)),
-                                ),
-                                Instr::Mov(
-                                    Operand::Mem(MemLoc::RegOffset(Reg::Rax, offset as i64)),
-                                    Operand::Reg(Reg::R10),
-                                ),
-                            ]
-                        })
-                        .chain([
-                            Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(arr_size)),
-                            Instr::Push(Reg::Rax),
-                            Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(exprs.len() as u64)),
-                            Instr::Push(Reg::Rax),
-                        ]),
-                );
+                self.copy_from_stack(arr_size);
+                self.add_instrs([
+                    Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(arr_size)),
+                    Instr::Push(Reg::Rax),
+                    Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(exprs.len() as u64)),
+                    Instr::Push(Reg::Rax),
+                ]);
             }
             ExprKind::StructInit(span, exprs) => todo!(),
-            ExprKind::FunctionCall(span, exprs) => todo!(),
+            ExprKind::FunctionCall(name, args) => {
+                let fn_info = self
+                    .env
+                    .get_function(*name)
+                    .expect("function should exist after typechecking");
+
+                self.call_fn(fn_info.name(), &args, fn_info.ret());
+            }
             ExprKind::FieldAccess(expr, span) => todo!(),
             ExprKind::ArrayIndex(expr, exprs) => todo!(),
             ExprKind::If(_) => todo!(),

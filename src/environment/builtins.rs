@@ -37,19 +37,20 @@ pub fn builtin_vars() -> Scope<'static> {
                 "args",
                 VarInfo {
                     var_type: TypeVal::Array(Box::new(TypeVal::Int), 1),
-                    stack_loc: super::StackLoc::Global(16),
+                    stack_loc: -16,
                 },
             ),
             (
                 "argnum",
                 VarInfo {
                     var_type: TypeVal::Int,
-                    stack_loc: super::StackLoc::Global(16),
+                    stack_loc: -16,
                 },
             ),
         ]),
         parent: GLOBAL_SCOPE_ID,
-        cur_size: 16,
+        // Space for r12
+        cur_size: 8,
     }
 }
 

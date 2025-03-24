@@ -1,10 +1,10 @@
-use std::{borrow::Cow, collections::HashMap, hash::Hash, u64};
+use std::{borrow::Cow, collections::HashMap, hash::Hash};
 
 use fragments::{MAIN_EPILOGUE, MAIN_PROLOGE};
 
 use crate::{
     ast::{expr::Expr, Program},
-    environment::Environment,
+    environment::{Environment, GLOBAL_SCOPE_ID},
     typecheck::TypeVal,
 };
 
@@ -18,8 +18,11 @@ pub const WORD_SIZE: u64 = 8;
 
 const MAIN_FN_IDX: usize = 0;
 const MAIN_FN_NAME: &str = "jpl_main";
-const STARTING_ALIGNMENT: u8 = 8;
-const STACK_FRAME_ALIGNMENT: u8 = 16;
+const STARTING_ALIGNMENT: u64 = 8;
+const STACK_FRAME_ALIGNMENT: u64 = 16;
+//TODO: better names
+const FN_STARTING_STACK_SIZE: u64 = 2 * WORD_SIZE;
+const MAIN_FN_STARTING_STACK_SIZE: u64 = 3 * WORD_SIZE;
 pub const INT_REGS_FOR_ARGS: [Reg; 6] = [Reg::Rdi, Reg::Rdx, Reg::Rsi, Reg::Rcx, Reg::R8, Reg::R9];
 pub const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
     Reg::Xmm0,
@@ -32,39 +35,48 @@ pub const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
     Reg::Xmm7,
 ];
 
-pub struct AsmEnv<'a, 'b> {
-    env: &'b Environment<'a>,
+#[derive(Debug, Clone)]
+pub struct AsmEnv<'a> {
+    env: &'a Environment<'a>,
     consts: HashMap<ConstKind<'a>, u64>,
     jmp_ctr: u64,
     fns: Vec<AsmFn<'a>>,
     cur_fn: usize,
+    cur_scope: usize,
 }
 
+#[derive(Debug, Clone)]
 struct AsmFn<'a> {
     text: Vec<Asm<'a>>,
     cur_stack_size: u64,
 }
 
-impl<'a, 'b> AsmEnv<'a, 'b> {
-    pub fn new(env: &'b Environment<'a>, typed_ast: Program) -> Self {
-        let mut main_fn = AsmFn::new(MAIN_FN_NAME);
-        main_fn.text.extend_from_slice(MAIN_PROLOGE);
+impl<'a> AsmEnv<'a> {
+    pub fn new(env: &'a Environment<'a>, typed_ast: Program) -> Self {
+        let main_fn = AsmFn::new(MAIN_FN_NAME);
         let mut asm_env = Self {
             env,
             fns: vec![main_fn],
             jmp_ctr: 1,
             consts: HashMap::new(),
             cur_fn: MAIN_FN_IDX,
+            cur_scope: GLOBAL_SCOPE_ID,
         };
+        asm_env.add_asm(MAIN_PROLOGE);
 
         for cmd in typed_ast.commands() {
             asm_env.gen_asm_cmd(cmd);
         }
-
         assert_eq!(asm_env.cur_fn, MAIN_FN_IDX);
-        asm_env.fns[MAIN_FN_IDX]
-            .text
-            .extend_from_slice(MAIN_EPILOGUE);
+        let local_vars_size = asm_env.fns[MAIN_FN_IDX].cur_stack_size - MAIN_FN_STARTING_STACK_SIZE;
+        assert!(local_vars_size % WORD_SIZE == 0);
+        if local_vars_size > 0 {
+            asm_env.add_instrs([Instr::Add(
+                Operand::Reg(Reg::Rsp),
+                Operand::Value(local_vars_size),
+            )])
+        }
+        asm_env.add_asm(MAIN_EPILOGUE);
 
         asm_env
     }
@@ -85,11 +97,15 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         cur_fn.text.extend(instrs.into_iter().inspect(|a| {
             if let Asm::Instr(instr) = a {
                 match instr {
-                    Instr::Call(_) => {
-                        assert!(cur_fn.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0);
+                    Instr::Call(name) => {
+                        //assert!(
+                        //    cur_fn.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0,
+                        //    "call to function {} not alligned",
+                        //    name
+                        //);
                     }
                     Instr::Push(_) => cur_fn.cur_stack_size += 8,
-                    Instr::Pop(_) => cur_fn.cur_stack_size += 8,
+                    Instr::Pop(_) => cur_fn.cur_stack_size -= 8,
                     Instr::Add(Operand::Reg(Reg::Rsp), rhs) => {
                         if let Operand::Value(inc) = rhs {
                             assert_eq!(inc % WORD_SIZE, 0);
@@ -101,13 +117,13 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                     Instr::Sub(Operand::Reg(Reg::Rsp), rhs) => {
                         if let Operand::Value(inc) = rhs {
                             assert_eq!(inc % WORD_SIZE, 0);
-                            cur_fn.cur_stack_size -= inc;
+                            cur_fn.cur_stack_size += inc;
                         } else {
                             unreachable!("Should only add constant values to the stack")
                         }
                     }
                     Instr::Ret => {
-                        assert!(cur_fn.cur_stack_size == 8);
+                        assert!(cur_fn.cur_stack_size == STARTING_ALIGNMENT);
                         cur_fn.cur_stack_size -= 8;
                     }
                     _ => (),
@@ -124,7 +140,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
 
     fn align_stack(&mut self, left_to_add: u64) -> bool {
         assert_eq!(left_to_add % WORD_SIZE, 0);
-        let left_to_add = (left_to_add % STACK_FRAME_ALIGNMENT as u64) as u8;
+        let left_to_add = left_to_add % STACK_FRAME_ALIGNMENT;
         let cur_alignment = self.fns[self.cur_fn].aligned();
 
         let adjustment_aligned = left_to_add % STACK_FRAME_ALIGNMENT == 0;
@@ -157,7 +173,19 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
     }
 
     fn call_fn(&mut self, name: &'a str, args: &[Expr], ret_type: &TypeVal) {
-        // TODO: allocate space for struct retval here
+        let avaliable_int_args = INT_REGS_FOR_ARGS.len() - {
+            match ret_type {
+                TypeVal::Int | TypeVal::Bool | TypeVal::Float | TypeVal::Void => 0,
+                TypeVal::Array(_, _) | TypeVal::Struct(_) => {
+                    self.add_instrs([Instr::Sub(
+                        Operand::Reg(Reg::Rsp),
+                        Operand::Value(self.env.type_size(ret_type)),
+                    )]);
+                    1
+                }
+            }
+        };
+
         let num_int_args = args
             .iter()
             .map(|e| e.type_data())
@@ -181,7 +209,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
                 TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
                 TypeVal::Int | TypeVal::Bool => {
                     cur_int_arg -= 1;
-                    cur_int_arg >= INT_REGS_FOR_ARGS.len()
+                    cur_int_arg >= avaliable_int_args
                 }
                 TypeVal::Float => {
                     cur_float_arg -= 1;
@@ -200,7 +228,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
             TypeVal::Int | TypeVal::Bool => {
                 cur_int_arg -= 1;
-                cur_int_arg >= INT_REGS_FOR_ARGS.len()
+                cur_int_arg >= avaliable_int_args
             }
             TypeVal::Float => {
                 cur_float_arg -= 1;
@@ -217,7 +245,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             TypeVal::Array(_, _) | TypeVal::Struct(_) => false,
             TypeVal::Int | TypeVal::Bool => {
                 cur_int_arg -= 1;
-                cur_int_arg < INT_REGS_FOR_ARGS.len()
+                cur_int_arg < avaliable_int_args
             }
             TypeVal::Float => {
                 cur_float_arg -= 1;
@@ -232,7 +260,7 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
         let mut cur_float_arg = 0;
         for arg in args {
             match arg.type_data() {
-                TypeVal::Int | TypeVal::Bool if cur_int_arg < INT_REGS_FOR_ARGS.len() => {
+                TypeVal::Int | TypeVal::Bool if cur_int_arg < avaliable_int_args => {
                     self.add_instrs([Instr::Pop(INT_REGS_FOR_ARGS[cur_int_arg])]);
                     cur_int_arg += 1;
                 }
@@ -245,16 +273,50 @@ impl<'a, 'b> AsmEnv<'a, 'b> {
             }
         }
 
+        // Load value for retval if needed
+        if matches!(ret_type, TypeVal::Array(_, _) | TypeVal::Struct(_)) {
+            let offset = stack_space_for_args + if stack_aligned { WORD_SIZE } else { 0 };
+            self.add_instrs([Instr::Lea(
+                INT_REGS_FOR_ARGS[0],
+                MemLoc::RegOffset(Reg::Rsp, offset as i64),
+            )]);
+        }
+
         self.add_instrs([Instr::Call(name)]);
         self.remove_stack_alignment(stack_aligned);
-        self.add_instrs(match ret_type {
-            TypeVal::Int => [Instr::Push(Reg::Rax)],
-            TypeVal::Bool => [Instr::Push(Reg::Rax)],
-            TypeVal::Float => [Instr::Push(Reg::Xmm0)],
-            TypeVal::Array(typed, _) => todo!(),
-            TypeVal::Struct(_) => todo!(),
-            TypeVal::Void => todo!(),
-        });
+        match ret_type {
+            TypeVal::Int | TypeVal::Void | TypeVal::Bool => {
+                self.add_instrs([Instr::Push(Reg::Rax)])
+            }
+            TypeVal::Float => self.add_instrs([Instr::Push(Reg::Xmm0)]),
+            // Return value already placed on top of the stack
+            TypeVal::Array(_, _) | TypeVal::Struct(_) => (),
+        }
+    }
+
+    /// Copies size bytes from the top of the stack to the pointer located in the rax register
+    fn copy_from_stack(&mut self, size: u64) {
+        assert!(size % WORD_SIZE == 0);
+        self.add_instrs(
+            //	mov r10, [rsp + 8]
+            //	mov [rax + 8], r10
+            (0..size as usize)
+                .into_iter()
+                .step_by(WORD_SIZE as usize)
+                .rev()
+                .flat_map(|offset| {
+                    [
+                        Instr::Mov(
+                            Operand::Reg(Reg::R10),
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, offset as i64)),
+                        ),
+                        Instr::Mov(
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rax, offset as i64)),
+                            Operand::Reg(Reg::R10),
+                        ),
+                    ]
+                }),
+        );
     }
 }
 
@@ -354,7 +416,7 @@ impl Operand {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Reg {
+pub enum Reg {
     Rax,
     Rbp,
     Rsp,
@@ -411,7 +473,7 @@ impl Reg {
 
 #[derive(Clone, Debug)]
 enum MemLoc {
-    GlobalOffset(i64),
+    GlobalOffset(i64, u64),
     LocalOffset(i64, u64),
     Const(u64),
     Reg(Reg),

@@ -7,7 +7,7 @@ use super::{
 };
 const INDENTATION: &str = "\t";
 
-impl Display for AsmEnv<'_, '_> {
+impl Display for AsmEnv<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for asm in HEADER {
             write!(f, "{}", asm)?;
@@ -194,8 +194,8 @@ impl Display for Reg {
 impl Display for MemLoc {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            MemLoc::GlobalOffset(offset) => todo!(),
-            MemLoc::LocalOffset(offset, idk) => todo!(),
+            MemLoc::GlobalOffset(offset, add) => write!(f, "[{} - {} + {}]", Reg::R12, offset, add),
+            MemLoc::LocalOffset(offset, add) => write!(f, "[{} - {} + {}]", Reg::Rbp, offset, add),
             MemLoc::Const(id) => write!(f, "[rel const{}]", id),
             MemLoc::Reg(reg) => write!(f, "[{}]", reg),
             MemLoc::RegOffset(reg, offset) => write!(
