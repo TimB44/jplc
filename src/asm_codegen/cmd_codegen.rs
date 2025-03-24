@@ -51,10 +51,8 @@ impl<'a> AsmEnv<'a> {
                 self.cur_scope = *scope;
 
                 self.add_asm(PROLOGE);
-                let aggregate_ret_val = dbg!(matches!(
-                    fn_info.ret(),
-                    TypeVal::Array(_, _) | TypeVal::Struct(_)
-                ));
+                let aggregate_ret_val =
+                    matches!(fn_info.ret(), TypeVal::Array(_, _) | TypeVal::Struct(_));
                 let mut int_regs = &INT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
                 let mut fp_regs = &FLOAT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
                 self.add_instrs(fn_info.args().iter().filter_map(|arg| match arg {

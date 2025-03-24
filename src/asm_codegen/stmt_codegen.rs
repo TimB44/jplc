@@ -41,8 +41,12 @@ impl<'a> AsmEnv<'a> {
                     Operand::Value(local_vars_size),
                 )]);
                 //}
-
                 self.add_asm(EPILOGUE);
+                let cur_fn = &mut self.fns[self.cur_fn];
+                assert_eq!(cur_fn.cur_stack_size, 0);
+                cur_fn.cur_stack_size += FN_STARTING_STACK_SIZE + local_vars_size;
+                // Add back the old stack size if case of multiple return values
+                //
             }
         }
     }
