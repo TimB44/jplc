@@ -41,13 +41,11 @@ impl<'a> AsmEnv<'a> {
                     .get_variable_info(expr.loc(), self.cur_scope)
                     .expect("variable should be valid after typechecking");
                 let type_size = self.env.type_size(var_info.var_type());
-                let is_global = self
-                    .env
-                    .get_scope(GLOBAL_SCOPE_ID)
-                    .names()
-                    .contains_key(expr.loc().as_str(self.env.src()));
 
-                let memloc = if self.cur_fn == MAIN_FN_IDX || !is_global {
+                let mut cur_scope = self.cur_scope;
+                let is_local = self.env.is_local_var(expr.loc(), self.cur_scope);
+
+                let memloc = if self.cur_fn == MAIN_FN_IDX || is_local {
                     MemLoc::LocalOffset
                 } else {
                     MemLoc::GlobalOffset

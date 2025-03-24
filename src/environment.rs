@@ -471,4 +471,18 @@ impl<'a> Environment<'a> {
             TypeVal::Void => 0,
         }
     }
+
+    pub fn is_local_var(&self, name: Span, mut cur_scope_id: usize) -> bool {
+        let name_str = name.as_str(self.src);
+        loop {
+            if cur_scope_id == GLOBAL_SCOPE_ID {
+                break false;
+            }
+            let cur_scope = &self.scopes[cur_scope_id];
+            if cur_scope.names.contains_key(name_str) {
+                break true;
+            }
+            cur_scope_id = cur_scope.parent;
+        }
+    }
 }
