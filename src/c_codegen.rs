@@ -256,7 +256,7 @@ macro_rules! write_stmt {
     };
 }
 
- use write_stmt;
+use write_stmt;
 macro_rules! write_assign_stmt {
     ($cenv:expr, $ty:expr, $($args:tt)*) => {
         {
@@ -270,7 +270,7 @@ macro_rules! write_assign_stmt {
     };
 }
 
- use write_assign_stmt;
+use write_assign_stmt;
 
 macro_rules! write_if_stmt {
     ($cenv:expr, $format:literal, $($args:tt)*) => {
@@ -294,7 +294,7 @@ macro_rules! write_if_stmt {
     };
 }
 
- use write_if_stmt;
+use write_if_stmt;
 
 fn codegen_cmd(cmd: &Cmd, cenv: &mut CGenEnv<'_, '_>) {
     match cmd.kind() {

@@ -98,11 +98,11 @@ impl<'a> AsmEnv<'a> {
             if let Asm::Instr(instr) = a {
                 match instr {
                     Instr::Call(name) => {
-                        //assert!(
-                        //    cur_fn.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0,
-                        //    "call to function {} not alligned",
-                        //    name
-                        //);
+                        assert!(
+                            cur_fn.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0,
+                            "call to function {} not aligned",
+                            name
+                        );
                     }
                     Instr::Push(_) => cur_fn.cur_stack_size += 8,
                     Instr::Pop(_) => cur_fn.cur_stack_size -= 8,
@@ -150,7 +150,6 @@ impl<'a> AsmEnv<'a> {
                 Operand::Reg(Reg::Rsp),
                 Operand::Value(WORD_SIZE),
             )]);
-
             true
         } else {
             false

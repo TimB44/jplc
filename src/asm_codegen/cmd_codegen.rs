@@ -5,9 +5,8 @@ use crate::{
 };
 
 use super::{
-    fragments::PROLOGE,
-    AsmEnv, AsmFn, ConstKind, Instr, MemLoc, Operand, Reg, FLOAT_REGS_FOR_ARGS, INT_REGS_FOR_ARGS,
-    MAIN_FN_IDX,
+    fragments::PROLOGE, AsmEnv, AsmFn, ConstKind, Instr, MemLoc, Operand, Reg, FLOAT_REGS_FOR_ARGS,
+    INT_REGS_FOR_ARGS, MAIN_FN_IDX,
 };
 
 impl AsmEnv<'_> {
