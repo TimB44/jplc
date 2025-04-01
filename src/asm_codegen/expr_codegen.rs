@@ -107,7 +107,25 @@ impl AsmEnv<'_> {
             }
             ExprKind::FieldAccess(expr, span) => todo!(),
             ExprKind::ArrayIndex(expr, exprs) => todo!(),
-            ExprKind::If(_) => todo!(),
+            ExprKind::If(if_expr) => {
+                let [cond, true_branch, flase_branch] = if_expr.as_ref();
+                self.gen_asm_expr(cond);
+                let false_jump = self.next_jump();
+                let end_jump = self.next_jump();
+                let output_size = self.env.type_size(expr.type_data());
+                self.add_instrs([
+                    Instr::Pop(Reg::Rax),
+                    Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                    Instr::Je(false_jump),
+                ]);
+                self.gen_asm_expr(true_branch);
+                self.add_asm([Asm::Instr(Instr::Jmp(end_jump)), Asm::JumpLabel(false_jump)]);
+                // In this branch we have not pushed the output item on the stack yet so reset the
+                // stack to what is was before the true branch
+                self.fns[self.cur_fn].cur_stack_size -= output_size;
+                self.gen_asm_expr(flase_branch);
+                self.add_asm([Asm::JumpLabel(end_jump)]);
+            }
             ExprKind::ArrayComp(items, expr, _) => todo!(),
             ExprKind::Sum(items, expr, _) => todo!(),
             ExprKind::And(_) => todo!(),

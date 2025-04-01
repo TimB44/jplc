@@ -614,7 +614,7 @@ fn expr_to_ident<'b>(expr: &Expr, cenv: &mut CGenEnv<'_, 'b>) -> Ident<'b> {
             )
         }
         ExprKind::If(if_expr) => {
-            let (cond, true_branch, false_branch) = if_expr.as_ref();
+            let [cond, true_branch, false_branch] = if_expr.as_ref();
             let output_type = true_branch.type_data();
             let condition_ident = expr_to_ident(cond, cenv);
             cenv.gen_arr_struct(expr.type_data());

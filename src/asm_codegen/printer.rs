@@ -146,6 +146,8 @@ impl Display for Instr<'_> {
             Instr::Setne => write!(f, "setne al"),
             Instr::Cmp(lhs, rhs) => write!(f, "cmp {}, {}", lhs, rhs),
             Instr::Jne(jump_id) => write!(f, "jne .jump{}", jump_id),
+            Instr::Je(jump_id) => write!(f, "je .jump{}", jump_id),
+            Instr::Jmp(jump_id) => write!(f, "jmp .jump{}", jump_id),
             Instr::Cqo => write!(f, "cqo"),
             Instr::Cmplt(lhs, rhs) => write!(f, "cmpltsd {}, {}", lhs, rhs),
             Instr::Cmple(lhs, rhs) => write!(f, "cmplesd {}, {}", lhs, rhs),

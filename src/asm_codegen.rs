@@ -189,7 +189,7 @@ impl<'a> AsmEnv<'a> {
             .iter()
             .map(|e| e.type_data())
             // TODO maybe add void to the matches
-            .filter(|t| matches!(t, TypeVal::Int | TypeVal::Bool))
+            .filter(|t| matches!(t, TypeVal::Int | TypeVal::Bool | TypeVal::Void))
             .count();
 
         let num_float_args = args
@@ -403,7 +403,9 @@ enum Instr<'a> {
     Cmpneq(Reg, Reg),
 
     Cmp(Operand, Operand),
+    Jmp(u64),
     Jne(u64),
+    Je(u64),
     Cqo,
 }
 

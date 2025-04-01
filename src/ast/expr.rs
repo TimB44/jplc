@@ -114,7 +114,7 @@ pub enum ExprKind {
     ArrayIndex(Box<Expr>, Box<[Expr]>),
 
     // Lowest Precedence
-    If(Box<(Expr, Expr, Expr)>),
+    If(Box<[Expr; 3]>),
 
     // Number represents their scope
     ArrayComp(Box<[LoopVar]>, Box<Expr>, usize),
@@ -234,7 +234,7 @@ impl Expr {
         false_expr.expect_type(branch_type, env)?;
         Ok(Self {
             loc,
-            kind: ExprKind::If(Box::new((cond, true_expr, false_expr))),
+            kind: ExprKind::If(Box::new([cond, true_expr, false_expr])),
             type_data: branch_type.clone(),
         })
     }
@@ -912,9 +912,9 @@ impl SExpr for Expr {
                 f,
                 "(IfExpr{} {} {} {})",
                 ty,
-                Displayable(&if_stmt.0, env, opt),
-                Displayable(&if_stmt.1, env, opt),
-                Displayable(&if_stmt.2, env, opt)
+                Displayable(&if_stmt[0], env, opt),
+                Displayable(&if_stmt[1], env, opt),
+                Displayable(&if_stmt[2], env, opt)
             ),
             ExprKind::ArrayComp(args, expr, _) => {
                 write!(
