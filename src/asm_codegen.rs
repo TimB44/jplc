@@ -324,7 +324,7 @@ impl<'a> AsmEnv<'a> {
     }
 
     /// Copies size bytes from the top of the stack to the pointer located in the rax register
-    fn copy_from_stack(&mut self, size: u64) {
+    fn copy_from_stack(&mut self, size: u64, from: Reg, to: Reg) {
         assert!(size % WORD_SIZE == 0);
         self.add_instrs(
             //	mov r10, [rsp + 8]
@@ -336,15 +336,23 @@ impl<'a> AsmEnv<'a> {
                     [
                         Instr::Mov(
                             Operand::Reg(Reg::R10),
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, offset as i64)),
+                            Operand::Mem(MemLoc::RegOffset(from, offset as i64)),
                         ),
                         Instr::Mov(
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rax, offset as i64)),
+                            Operand::Mem(MemLoc::RegOffset(to, offset as i64)),
                             Operand::Reg(Reg::R10),
                         ),
                     ]
                 }),
         );
+    }
+    fn fail_assertion(&mut self, msg: u64) {
+        let stack_was_aligned = self.align_stack(0);
+        self.add_instrs([
+            Instr::Lea(Reg::Rdi, MemLoc::Const(msg)),
+            Instr::Call("fail_assertion"),
+        ]);
+        self.remove_stack_alignment(stack_was_aligned);
     }
 }
 
@@ -406,6 +414,10 @@ enum Instr<'a> {
     Jmp(u64),
     Jne(u64),
     Je(u64),
+    Jl(u64),
+    Jge(u64),
+    Jno(u64),
+    Jg(u64),
     Cqo,
 }
 

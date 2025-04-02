@@ -1,13 +1,20 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, iter::repeat_n};
 
 use crate::{
     asm_codegen::{MAIN_FN_IDX, WORD_SIZE},
-    ast::expr::{Expr, ExprKind},
+    ast::{
+        auxiliary::LoopVar,
+        expr::{Expr, ExprKind},
+    },
     typecheck::TypeVal,
 };
 
 const DIVIDE_BY_ZERO_ERR_MSG: &str = "divide by zero";
 const MOD_BY_ZERO_ERR_MSG: &str = "mod by zero";
+const NEGATIVE_ARRAY_INDEX_ERR_MSG: &str = "negative array index";
+const INDEX_TOO_LARGE_ERR_MSG: &str = "index too large";
+const NEGATIVE_LOOP_BOUND_ERR_MSG: &str = "non-positive loop bound";
+const OVERFLOW_ARRAY_ERR_MSG: &str = "overflow computing array siz";
 
 use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
@@ -88,7 +95,7 @@ impl AsmEnv<'_> {
                 let stack_aligend = self.align_stack(0);
                 self.add_instrs([Instr::Call("jpl_alloc")]);
                 self.remove_stack_alignment(stack_aligend);
-                self.copy_from_stack(arr_size);
+                self.copy_from_stack(arr_size, Reg::Rsp, Reg::Rax);
                 self.add_instrs([
                     Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(arr_size)),
                     Instr::Push(Reg::Rax),
@@ -106,7 +113,88 @@ impl AsmEnv<'_> {
                 self.call_fn(fn_info.name(), args, fn_info.ret());
             }
             ExprKind::FieldAccess(expr, span) => todo!(),
-            ExprKind::ArrayIndex(expr, exprs) => todo!(),
+            ExprKind::ArrayIndex(array_expr, indices) => {
+                let rank = indices.len();
+                let element_size = self.env.type_size(expr.type_data());
+                self.gen_asm_expr(array_expr);
+                for index in indices.iter().rev() {
+                    self.gen_asm_expr(index);
+                }
+                let negative_err_str = self.add_const(&ConstKind::String(Cow::Borrowed(
+                    NEGATIVE_ARRAY_INDEX_ERR_MSG,
+                )));
+                let overflow_err_str =
+                    self.add_const(&ConstKind::String(Cow::Borrowed(INDEX_TOO_LARGE_ERR_MSG)));
+                for (i, _) in indices.iter().enumerate() {
+                    let index_offset = i as u64 * WORD_SIZE;
+                    let bound_offset = index_offset + rank as u64 * WORD_SIZE;
+                    let ok_negative_jmp = self.next_jump();
+                    let ok_overflow_jmp = self.next_jump();
+                    self.add_instrs([
+                        Instr::Mov(
+                            Operand::Reg(Reg::Rax),
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
+                        ),
+                        Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                        Instr::Jge(ok_negative_jmp),
+                    ]);
+                    self.fail_assertion(negative_err_str);
+                    self.add_asm([Asm::JumpLabel(ok_negative_jmp)]);
+
+                    self.add_instrs([
+                        Instr::Cmp(
+                            Operand::Reg(Reg::Rax),
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
+                        ),
+                        Instr::Jl(ok_overflow_jmp),
+                    ]);
+                    self.fail_assertion(overflow_err_str);
+                    self.add_asm([Asm::JumpLabel(ok_overflow_jmp)]);
+                }
+
+                self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
+                for (i, _) in indices.iter().enumerate() {
+                    let index_offset = i as u64 * WORD_SIZE;
+                    let bound_offset = index_offset + rank as u64 * WORD_SIZE;
+                    self.add_instrs([
+                        Instr::Mul(
+                            Operand::Reg(Reg::Rax),
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
+                        ),
+                        Instr::Add(
+                            Operand::Reg(Reg::Rax),
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
+                        ),
+                    ]);
+                }
+
+                self.add_instrs([
+                    Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
+                    Instr::Add(
+                        Operand::Reg(Reg::Rax),
+                        Operand::Mem(MemLoc::RegOffset(
+                            Reg::Rsp,
+                            rank as i64 * WORD_SIZE as i64 * 2,
+                        )),
+                    ),
+                ]);
+
+                self.add_instrs(
+                    repeat_n(
+                        Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(WORD_SIZE)),
+                        rank,
+                    )
+                    .chain([
+                        Instr::Add(
+                            Operand::Reg(Reg::Rsp),
+                            Operand::Value(rank as u64 * WORD_SIZE + WORD_SIZE),
+                        ),
+                        Instr::Sub(Operand::Reg(Reg::Rsp), Operand::Value(element_size)),
+                    ]),
+                );
+
+                self.copy_from_stack(element_size, Reg::Rax, Reg::Rsp);
+            }
             ExprKind::If(if_expr) => {
                 let [cond, true_branch, flase_branch] = if_expr.as_ref();
                 self.gen_asm_expr(cond);
@@ -284,12 +372,7 @@ impl AsmEnv<'_> {
             &ConstKind::String(Cow::Borrowed(MOD_BY_ZERO_ERR_MSG))
         });
 
-        let stack_aligned = self.align_stack(0);
-        self.add_instrs([
-            Instr::Lea(Reg::Rdi, MemLoc::Const(err_msg_id)),
-            Instr::Call("fail_assertion"),
-        ]);
-        self.remove_stack_alignment(stack_aligned);
+        self.fail_assertion(err_msg_id);
         self.add_asm([Asm::JumpLabel(ok_jump)]);
 
         self.add_instrs([

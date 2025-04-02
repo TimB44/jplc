@@ -28,7 +28,7 @@ impl AsmEnv<'_> {
                             Operand::Mem(MemLoc::RegOffset(Reg::Rbp, -(WORD_SIZE as i64))),
                         )]);
 
-                        self.copy_from_stack(ret_type_size);
+                        self.copy_from_stack(ret_type_size, Reg::Rsp, Reg::Rax);
                     }
                 }
 
