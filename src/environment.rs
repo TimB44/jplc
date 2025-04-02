@@ -319,7 +319,7 @@ impl<'a> Environment<'a> {
         // Add the space used for accumulator/pointer and looping bounds
         let cur_scope = &mut self.scopes[self.cur_scope];
         cur_scope.cur_size += WORD_SIZE + loop_vars.len() as u64 * WORD_SIZE;
-        for LoopVar(name, _) in loop_vars {
+        for LoopVar(name, _) in loop_vars.iter().rev() {
             self.scopes[self.cur_scope].cur_size += WORD_SIZE;
             self.add_name(*name, TypeVal::Int, None)?;
         }

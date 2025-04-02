@@ -14,7 +14,7 @@ const MOD_BY_ZERO_ERR_MSG: &str = "mod by zero";
 const NEGATIVE_ARRAY_INDEX_ERR_MSG: &str = "negative array index";
 const INDEX_TOO_LARGE_ERR_MSG: &str = "index too large";
 const NEGATIVE_LOOP_BOUND_ERR_MSG: &str = "non-positive loop bound";
-const OVERFLOW_ARRAY_ERR_MSG: &str = "overflow computing array siz";
+const OVERFLOW_ARRAY_ERR_MSG: &str = "overflow computing array size";
 
 use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
@@ -152,32 +152,7 @@ impl AsmEnv<'_> {
                     self.add_asm([Asm::JumpLabel(ok_overflow_jmp)]);
                 }
 
-                self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
-                for (i, _) in indices.iter().enumerate() {
-                    let index_offset = i as u64 * WORD_SIZE;
-                    let bound_offset = index_offset + rank as u64 * WORD_SIZE;
-                    self.add_instrs([
-                        Instr::Mul(
-                            Operand::Reg(Reg::Rax),
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
-                        ),
-                        Instr::Add(
-                            Operand::Reg(Reg::Rax),
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
-                        ),
-                    ]);
-                }
-
-                self.add_instrs([
-                    Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
-                    Instr::Add(
-                        Operand::Reg(Reg::Rax),
-                        Operand::Mem(MemLoc::RegOffset(
-                            Reg::Rsp,
-                            rank as i64 * WORD_SIZE as i64 * 2,
-                        )),
-                    ),
-                ]);
+                self.calculate_array_index(rank as u64, element_size);
 
                 self.add_instrs(
                     repeat_n(
@@ -214,8 +189,172 @@ impl AsmEnv<'_> {
                 self.gen_asm_expr(flase_branch);
                 self.add_asm([Asm::JumpLabel(end_jump)]);
             }
-            ExprKind::ArrayComp(items, expr, _) => todo!(),
-            ExprKind::Sum(items, expr, _) => todo!(),
+            ExprKind::ArrayComp(looping_vars, body, scope)
+            | ExprKind::Sum(looping_vars, body, scope) => {
+                let is_array = matches!(expr.kind(), ExprKind::ArrayComp(_, _, _));
+                let element_size = self.env.type_size(body.type_data());
+                self.add_instrs([Instr::Sub(
+                    Operand::Reg(Reg::Rsp),
+                    Operand::Value(WORD_SIZE),
+                )]);
+                let loop_rank = looping_vars.len();
+                for LoopVar(_, loop_bound) in looping_vars.iter().rev() {
+                    self.gen_asm_expr(loop_bound);
+                    let ok_jmp = self.next_jump();
+                    self.add_instrs([
+                        Instr::Mov(Operand::Reg(Reg::Rax), Operand::Mem(MemLoc::Reg(Reg::Rsp))),
+                        Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                        Instr::Jg(ok_jmp),
+                    ]);
+                    let err_msg_id = self.add_const(&ConstKind::String(Cow::Borrowed(
+                        NEGATIVE_LOOP_BOUND_ERR_MSG,
+                    )));
+                    self.fail_assertion(err_msg_id);
+                    self.add_asm([Asm::JumpLabel(ok_jmp)]);
+                }
+                if is_array {
+                    self.add_instrs([Instr::Mov(
+                        Operand::Reg(Reg::Rdi),
+                        Operand::Value(element_size),
+                    )]);
+                    let err_msg =
+                        self.add_const(&ConstKind::String(Cow::Borrowed(OVERFLOW_ARRAY_ERR_MSG)));
+                    for (i, _) in looping_vars.iter().enumerate() {
+                        let ok_jmp = self.next_jump();
+                        self.add_instrs([
+                            Instr::Mul(
+                                Operand::Reg(Reg::Rdi),
+                                Operand::Mem(MemLoc::RegOffset(
+                                    Reg::Rsp,
+                                    i as i64 * WORD_SIZE as i64,
+                                )),
+                            ),
+                            Instr::Jno(ok_jmp),
+                        ]);
+                        self.fail_assertion(err_msg);
+                        self.add_asm([Asm::JumpLabel(ok_jmp)])
+                    }
+                    let stack_was_aligned = self.align_stack(0);
+                    self.add_instrs([Instr::Call("jpl_alloc")]);
+                    self.remove_stack_alignment(stack_was_aligned);
+                } else {
+                    self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
+                }
+
+                self.add_instrs(
+                    [Instr::Mov(
+                        Operand::Mem(MemLoc::RegOffset(
+                            Reg::Rsp,
+                            WORD_SIZE as i64 * loop_rank as i64,
+                        )),
+                        Operand::Reg(Reg::Rax),
+                    )]
+                    .into_iter()
+                    .chain(
+                        repeat_n(
+                            [
+                                Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                                Instr::Push(Reg::Rax),
+                            ],
+                            loop_rank,
+                        )
+                        .flatten(),
+                    ),
+                );
+                let loop_begining = self.next_jump();
+                self.add_asm([Asm::JumpLabel(loop_begining)]);
+                let old_scope = self.cur_scope;
+                self.cur_scope = *scope;
+                self.gen_asm_expr(body);
+                self.cur_scope = old_scope;
+                if is_array {
+                    self.calculate_array_index(loop_rank as u64, element_size);
+                    self.add_instrs([Instr::Add(
+                        Operand::Reg(Reg::Rax),
+                        Operand::Mem(MemLoc::RegOffset(
+                            Reg::Rsp,
+                            loop_rank as i64 * 2 * WORD_SIZE as i64 + element_size as i64,
+                        )),
+                    )]);
+                    self.copy_from_stack(element_size, Reg::Rsp, Reg::Rax);
+                    self.add_instrs([Instr::Add(
+                        Operand::Reg(Reg::Rsp),
+                        Operand::Value(element_size),
+                    )]);
+                } else {
+                    match body.type_data() {
+                        TypeVal::Int => {
+                            self.add_instrs([
+                                Instr::Pop(Reg::Rax),
+                                Instr::Add(
+                                    Operand::Mem(MemLoc::RegOffset(
+                                        Reg::Rsp,
+                                        loop_rank as i64 * WORD_SIZE as i64 * 2,
+                                    )),
+                                    Operand::Reg(Reg::Rax),
+                                ),
+                            ]);
+                        }
+                        TypeVal::Float => {
+                            self.add_instrs([
+                                Instr::Pop(Reg::Xmm0),
+                                Instr::Add(
+                                    Operand::Reg(Reg::Xmm0),
+                                    Operand::Mem(MemLoc::RegOffset(
+                                        Reg::Rsp,
+                                        loop_rank as i64 * WORD_SIZE as i64 * 2,
+                                    )),
+                                ),
+                                Instr::Mov(
+                                    Operand::Mem(MemLoc::RegOffset(
+                                        Reg::Rsp,
+                                        loop_rank as i64 * WORD_SIZE as i64 * 2,
+                                    )),
+                                    Operand::Reg(Reg::Xmm0),
+                                ),
+                            ]);
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+
+                for i in (0..loop_rank).rev() {
+                    let index_offset = i as i64 * WORD_SIZE as i64;
+                    let bounds_offset = loop_rank as i64 * WORD_SIZE as i64 + index_offset;
+                    self.add_instrs([
+                        Instr::Add(
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
+                            Operand::Value(1),
+                        ),
+                        Instr::Mov(
+                            Operand::Reg(Reg::Rax),
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
+                        ),
+                        Instr::Cmp(
+                            Operand::Reg(Reg::Rax),
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bounds_offset)),
+                        ),
+                        Instr::Jl(loop_begining),
+                    ]);
+
+                    if i > 0 {
+                        self.add_instrs([Instr::Mov(
+                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
+                            Operand::Value(0),
+                        )]);
+                    }
+                }
+                self.add_instrs([Instr::Add(
+                    Operand::Reg(Reg::Rsp),
+                    Operand::Value(loop_rank as u64 * WORD_SIZE),
+                )]);
+                if !is_array {
+                    self.add_instrs([Instr::Add(
+                        Operand::Reg(Reg::Rsp),
+                        Operand::Value(loop_rank as u64 * WORD_SIZE),
+                    )]);
+                }
+            }
             ExprKind::And(_) => todo!(),
             ExprKind::Or(_) => todo!(),
             ExprKind::LessThan(args)

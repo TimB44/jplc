@@ -52,6 +52,9 @@ impl Display for Asm<'_> {
 impl Display for Instr<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Instr::Mov(Operand::Mem(mem_loc), Operand::Value(value)) => {
+                write!(f, "mov qword {}, {}", mem_loc, value)
+            }
             Instr::Mov(lhs, rhs) => match (lhs.kind(), rhs.kind()) {
                 (Some(RegKind::Int), Some(RegKind::Float))
                 | (Some(RegKind::Float), Some(RegKind::Int)) => {
@@ -104,6 +107,10 @@ impl Display for Instr<'_> {
                     )
                 }
             },
+
+            Instr::Add(Operand::Mem(mem_loc), Operand::Value(value)) => {
+                write!(f, "add qword {}, {}", mem_loc, value)
+            }
             Instr::Add(lhs, rhs) => match lhs.args_kind(rhs) {
                 RegKind::Int => {
                     write!(f, "add {}, {}", lhs, rhs)

@@ -354,6 +354,35 @@ impl<'a> AsmEnv<'a> {
         ]);
         self.remove_stack_alignment(stack_was_aligned);
     }
+
+    fn calculate_array_index(&mut self, rank: u64, element_size: u64) {
+        self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
+        for i in 0..rank {
+            let index_offset = i as u64 * WORD_SIZE;
+            let bound_offset = index_offset + rank as u64 * WORD_SIZE;
+            self.add_instrs([
+                Instr::Mul(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
+                ),
+                Instr::Add(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
+                ),
+            ]);
+
+            self.add_instrs([
+                Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
+                Instr::Add(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(
+                        Reg::Rsp,
+                        rank as i64 * WORD_SIZE as i64 * 2,
+                    )),
+                ),
+            ]);
+        }
+    }
 }
 
 impl<'a> AsmFn<'a> {
