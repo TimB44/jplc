@@ -1,5 +1,8 @@
 use crate::{
-    asm_codegen::{FLOAT_REGS_FOR_ARGS, INT_REGS_FOR_ARGS, WORD_SIZE},
+    asm_codegen::{
+        FLOAT_REGS_FOR_ARGS, FN_STARTING_STACK_SIZE, INT_REGS_FOR_ARGS,
+        MAIN_FN_STARTING_STACK_SIZE, STACK_FRAME_ALIGNMENT, WORD_SIZE,
+    },
     ast::{
         auxiliary::{Binding, LValue, LoopVar, StructField, Var},
         types::Type,
@@ -40,6 +43,7 @@ pub struct FunctionInfo<'a> {
     args: Box<[TypeVal]>,
     ret: TypeVal,
     name: &'a str,
+    args_stack_size: u64,
     scope: usize,
 }
 
@@ -275,6 +279,7 @@ impl<'a> Environment<'a> {
                 ret,
                 name,
                 scope,
+                args_stack_size: (stack_args_offset - stack_args_offset).abs() as u64,
             },
         );
 
@@ -323,7 +328,6 @@ impl<'a> Environment<'a> {
             self.scopes[self.cur_scope].cur_size += WORD_SIZE;
             self.add_name(*name, TypeVal::Int, None)?;
         }
-
         Ok(())
     }
 
@@ -483,6 +487,35 @@ impl<'a> Environment<'a> {
                 break true;
             }
             cur_scope_id = cur_scope.parent;
+        }
+    }
+
+    pub fn align_stack(&mut self, fn_name: Option<Span>) -> bool {
+        let args_stack_sapce = fn_name
+            .and_then(|name| self.get_function(name).ok())
+            .map(|info| info.args_stack_size)
+            .unwrap_or(0);
+
+        let cur_scope = &mut self.scopes[self.cur_scope];
+        let stack_size = cur_scope.cur_size
+            + args_stack_sapce
+            + if self.cur_scope == GLOBAL_SCOPE_ID {
+                MAIN_FN_STARTING_STACK_SIZE
+            } else {
+                FN_STARTING_STACK_SIZE
+            };
+
+        if stack_size % STACK_FRAME_ALIGNMENT != 0 {
+            cur_scope.cur_size += WORD_SIZE;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn remove_stack_alginment(&mut self, stack_was_aligned: bool) {
+        if stack_was_aligned {
+            self.scopes[self.cur_scope].cur_size -= WORD_SIZE;
         }
     }
 }

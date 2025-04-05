@@ -734,7 +734,9 @@ impl Expr {
     fn parse_fn_call(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [fn_name] = expect_tokens(ts, [TokenType::Variable])?;
         _ = expect_tokens(ts, [TokenType::LParen])?;
+        let stack_was_aligned = env.align_stack(Some(fn_name.loc()));
         let args: Box<[Expr]> = parse_sequence(ts, env, TokenType::Comma, TokenType::RParen)?;
+        env.remove_stack_alginment(stack_was_aligned);
         let [r_curly_token] = expect_tokens(ts, [TokenType::RParen])?;
         let loc = fn_name.loc().join(r_curly_token.loc());
 

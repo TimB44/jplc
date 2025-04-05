@@ -18,11 +18,13 @@ pub const WORD_SIZE: u64 = 8;
 
 const MAIN_FN_IDX: usize = 0;
 const MAIN_FN_NAME: &str = "jpl_main";
-const STARTING_ALIGNMENT: u64 = 8;
-const STACK_FRAME_ALIGNMENT: u64 = 16;
-//TODO: better names
-const FN_STARTING_STACK_SIZE: u64 = 2 * WORD_SIZE;
-const MAIN_FN_STARTING_STACK_SIZE: u64 = 3 * WORD_SIZE;
+//TODO: What is this
+pub const STARTING_ALIGNMENT: u64 = WORD_SIZE;
+pub const STACK_FRAME_ALIGNMENT: u64 = 16;
+// TODO: better names
+pub const FN_STARTING_STACK_SIZE: u64 = 2 * WORD_SIZE;
+pub const MAIN_FN_STARTING_STACK_SIZE: u64 = 3 * WORD_SIZE;
+
 pub const INT_REGS_FOR_ARGS: [Reg; 6] = [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::Rcx, Reg::R8, Reg::R9];
 pub const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
     Reg::Xmm0,

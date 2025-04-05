@@ -186,7 +186,9 @@ impl Cmd {
 
     fn parse_show(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [show_token] = expect_tokens(ts, [TokenType::Show])?;
+        let stack_was_aligned = env.align_stack(None);
         let expr = Expr::parse(ts, env)?;
+        env.remove_stack_alginment(stack_was_aligned);
         let loc = show_token.loc().join(expr.loc());
         Ok(Self {
             kind: CmdKind::Show(expr),
