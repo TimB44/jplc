@@ -50,7 +50,7 @@ impl AsmEnv<'_> {
                 let is_local = self.env.is_local_var(expr.loc(), self.cur_scope);
                 // offset are from ebp which is 16 bytes after the start of the stack frame
                 let mem_loc =
-                    self.var_locs[expr.loc().as_str(&self.env.src())] - WORD_SIZE as i64 * 2;
+                    self.var_locs[expr.loc().as_str(self.env.src())] - WORD_SIZE as i64 * 2;
 
                 let var_type = if self.cur_fn == MAIN_FN_IDX || is_local {
                     MemLoc::LocalOffset
@@ -105,7 +105,7 @@ impl AsmEnv<'_> {
                     Instr::Push(Reg::Rax),
                 ]);
             }
-            ExprKind::StructInit(span, exprs) => todo!(),
+            ExprKind::StructInit(_, _) => todo!(),
             ExprKind::FunctionCall(name, args) => {
                 let fn_info = self
                     .env
@@ -114,7 +114,7 @@ impl AsmEnv<'_> {
 
                 self.call_fn(fn_info.name(), args, fn_info.ret());
             }
-            ExprKind::FieldAccess(expr, span) => todo!(),
+            ExprKind::FieldAccess(_, _) => todo!(),
             ExprKind::ArrayIndex(array_expr, indices) => {
                 let rank = indices.len();
                 let element_size = self.env.type_size(expr.type_data());

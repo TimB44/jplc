@@ -106,7 +106,7 @@ impl<'a> AsmEnv<'a> {
                 match instr {
                     Instr::Call(name) => {
                         assert!(
-                            cur_fn.cur_stack_size % STACK_FRAME_ALIGNMENT as u64 == 0,
+                            cur_fn.cur_stack_size % STACK_FRAME_ALIGNMENT == 0,
                             "call to function {} not aligned",
                             name
                         );
@@ -361,8 +361,8 @@ impl<'a> AsmEnv<'a> {
     fn calculate_array_index(&mut self, rank: u64, element_size: u64, staring_offset: u64) {
         self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
         for i in 0..rank {
-            let index_offset = i as u64 * WORD_SIZE + staring_offset;
-            let bound_offset = index_offset + (rank as u64 * WORD_SIZE);
+            let index_offset = i * WORD_SIZE + staring_offset;
+            let bound_offset = index_offset + (rank * WORD_SIZE);
             self.add_instrs([
                 Instr::Mul(
                     Operand::Reg(Reg::Rax),

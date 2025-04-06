@@ -646,7 +646,7 @@ fn expr_to_ident<'b>(expr: &Expr, cenv: &mut CGenEnv<'_, 'b>) -> Ident<'b> {
             let bounds_idents: Vec<_> = loop_bounds
                 .into_iter()
                 .enumerate()
-                .map(|(i, LoopVar(name, expr))| {
+                .map(|(i, LoopVar(_, expr))| {
                     let bound_ident = expr_to_ident(expr, cenv);
                     if is_array_comp {
                         write_stmt!(cenv, "{}.d{} = {}", output_ident, i, bound_ident);

@@ -61,7 +61,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "sqrt",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -70,7 +70,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "exp",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -79,7 +79,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "sin",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -88,7 +88,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "cos",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -97,7 +97,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "tan",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -106,7 +106,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "asin",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -115,7 +115,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "acos",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -124,7 +124,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "atan",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -133,7 +133,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "log",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -142,7 +142,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float, TypeVal::Float].into_boxed_slice(),
                 name: "pow",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -151,7 +151,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float, TypeVal::Float].into_boxed_slice(),
                 name: "atan2",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -160,7 +160,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Int].into_boxed_slice(),
                 name: "to_float",
                 ret: TypeVal::Float,
-                scope: 0,
+                _scope: 0,
             },
         ),
         (
@@ -169,7 +169,7 @@ pub fn builtin_fns() -> HashMap<&'static str, FunctionInfo<'static>> {
                 args: vec![TypeVal::Float].into_boxed_slice(),
                 name: "to_int",
                 ret: TypeVal::Int,
-                scope: 0,
+                _scope: 0,
             },
         ),
     ])

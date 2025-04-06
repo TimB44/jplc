@@ -7,7 +7,7 @@
 //! - `types`: JPL variable types (WIP)
 use std::{
     collections::VecDeque,
-    fmt::{self, Display, Formatter, Write},
+    fmt::{self, Display, Formatter},
 };
 
 use crate::{
@@ -40,7 +40,7 @@ impl<T: SExpr> Display for Displayable<'_, '_, T> {
 
 impl<T: SExpr> Display for Displayable<'_, '_, Box<[T]>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for (i, item) in self.0.iter().enumerate() {
+        for item in self.0.iter() {
             write!(f, " {}", Displayable(item, self.1, self.2))?;
         }
         Ok(())

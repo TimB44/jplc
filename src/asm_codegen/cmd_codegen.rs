@@ -6,20 +6,20 @@ use crate::{
 
 use super::{
     fragments::PROLOGE, AsmEnv, AsmFn, ConstKind, Instr, MemLoc, Operand, Reg, FLOAT_REGS_FOR_ARGS,
-    INT_REGS_FOR_ARGS, MAIN_FN_IDX, WORD_SIZE,
+    INT_REGS_FOR_ARGS, MAIN_FN_IDX,
 };
 
 impl AsmEnv<'_> {
     pub fn gen_asm_cmd(&mut self, cmd: &Cmd) {
         match cmd.kind() {
-            CmdKind::ReadImage(_, lvalue) => todo!(),
-            CmdKind::WriteImage(expr, _) => todo!(),
+            CmdKind::ReadImage(_, _) => todo!(),
+            CmdKind::WriteImage(_, _) => todo!(),
             CmdKind::Let(lvalue, expr) => {
                 self.gen_asm_expr(expr);
                 self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
             }
 
-            CmdKind::Assert(expr, _) => todo!(),
+            CmdKind::Assert(_, _) => todo!(),
             CmdKind::Print(_) => todo!(),
             CmdKind::Show(expr) => {
                 let type_size = self.env.type_size(expr.type_data());
@@ -38,7 +38,7 @@ impl AsmEnv<'_> {
 
                 self.remove_stack_alignment(stack_aligned);
             }
-            CmdKind::Time(cmd) => todo!(),
+            CmdKind::Time(_) => todo!(),
             CmdKind::Function {
                 name,
                 body,
@@ -68,7 +68,7 @@ impl AsmEnv<'_> {
                 let mut stack_args_loc = 0;
                 for (arg, lvalue) in fn_info
                     .args()
-                    .into_iter()
+                    .iter()
                     .zip(params.into_iter().map(|b| b.lvalue()))
                 {
                     match arg {
@@ -98,7 +98,7 @@ impl AsmEnv<'_> {
                 self.cur_fn = MAIN_FN_IDX;
                 self.cur_scope = GLOBAL_SCOPE_ID;
             }
-            CmdKind::Struct { name, fields } => todo!(),
+            CmdKind::Struct { .. } => todo!(),
         }
     }
 }

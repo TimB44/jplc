@@ -1,11 +1,10 @@
 // TODO: merge typechecking and parsing
 
 //! Defines the types of functions to parse all kinds of expressions in JPL
-use std::fmt::{Formatter, Write};
+use std::fmt::Formatter;
 
 use super::{super::parse::parse_sequence, auxiliary::LoopVar, expect_tokens, Parse, TokenStream};
 use crate::{
-    asm_codegen::WORD_SIZE,
     environment::Environment,
     lex::TokenType,
     parse::{Displayable, SExpr, SExprOptions},
@@ -735,10 +734,7 @@ impl Expr {
     fn parse_fn_call(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [fn_name] = expect_tokens(ts, [TokenType::Variable])?;
         _ = expect_tokens(ts, [TokenType::LParen])?;
-
-        let fn_info = env.get_function(fn_name.loc())?;
         let args: Box<[Expr]> = parse_sequence(ts, env, TokenType::Comma, TokenType::RParen)?;
-
         let [r_curly_token] = expect_tokens(ts, [TokenType::RParen])?;
         let loc = fn_name.loc().join(r_curly_token.loc());
 
