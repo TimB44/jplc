@@ -5,6 +5,7 @@ use std::fmt::{Formatter, Write};
 
 use super::{super::parse::parse_sequence, auxiliary::LoopVar, expect_tokens, Parse, TokenStream};
 use crate::{
+    asm_codegen::WORD_SIZE,
     environment::Environment,
     lex::TokenType,
     parse::{Displayable, SExpr, SExprOptions},
@@ -274,8 +275,8 @@ impl Expr {
 
         for LoopVar(name, val) in &looping_vars {
             val.expect_type(&TypeVal::Int, env)?;
+            env.add_name(*name, TypeVal::Int)?;
         }
-        env.add_loop_bounds(&looping_vars)?;
 
         let body = Self::parse(ts, env)?;
         let loc = arr_token.loc().join(body.loc);
@@ -321,10 +322,10 @@ impl Expr {
             ));
         }
 
-        for LoopVar(_, val) in &looping_vars {
+        for LoopVar(name, val) in &looping_vars {
             val.expect_type(&TypeVal::Int, env)?;
+            env.add_name(*name, TypeVal::Int)?;
         }
-        env.add_loop_bounds(&looping_vars)?;
 
         let body = Self::parse(ts, env)?;
         body.expect_one_of_types(&[TypeVal::Int, TypeVal::Float], env)?;
@@ -734,9 +735,10 @@ impl Expr {
     fn parse_fn_call(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [fn_name] = expect_tokens(ts, [TokenType::Variable])?;
         _ = expect_tokens(ts, [TokenType::LParen])?;
-        let stack_was_aligned = env.align_stack(Some(fn_name.loc()));
+
+        let fn_info = env.get_function(fn_name.loc())?;
         let args: Box<[Expr]> = parse_sequence(ts, env, TokenType::Comma, TokenType::RParen)?;
-        env.remove_stack_alginment(stack_was_aligned);
+
         let [r_curly_token] = expect_tokens(ts, [TokenType::RParen])?;
         let loc = fn_name.loc().join(r_curly_token.loc());
 
@@ -757,8 +759,6 @@ impl Expr {
                 fn_name.loc().as_str(env.src())
             ));
         }
-
-        let fn_info = env.get_function(fn_name.loc())?;
 
         for (arg, expected_type) in args.iter().zip(fn_info.args()) {
             arg.expect_type(expected_type, env)?;

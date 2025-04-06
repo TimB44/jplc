@@ -47,15 +47,17 @@ impl AsmEnv<'_> {
                     .get_variable_info(expr.loc(), self.cur_scope)
                     .expect("variable should be valid after typechecking");
                 let type_size = self.env.type_size(var_info.var_type());
-
-                let cur_scope = self.cur_scope;
                 let is_local = self.env.is_local_var(expr.loc(), self.cur_scope);
+                // offset are from ebp which is 16 bytes after the start of the stack frame
+                let mem_loc =
+                    self.var_locs[expr.loc().as_str(&self.env.src())] - WORD_SIZE as i64 * 2;
 
-                let memloc = if self.cur_fn == MAIN_FN_IDX || is_local {
+                let var_type = if self.cur_fn == MAIN_FN_IDX || is_local {
                     MemLoc::LocalOffset
                 } else {
                     MemLoc::GlobalOffset
                 };
+
                 self.add_instrs(
                     [Instr::Sub(
                         Operand::Reg(Reg::Rsp),
@@ -70,7 +72,7 @@ impl AsmEnv<'_> {
                                 [
                                     Instr::Mov(
                                         Operand::Reg(Reg::R10),
-                                        Operand::Mem(memloc(var_info.stack_loc(), offset as u64)),
+                                        Operand::Mem(var_type(mem_loc, offset as u64)),
                                     ),
                                     Instr::Mov(
                                         Operand::Mem(MemLoc::RegOffset(Reg::Rsp, offset as i64)),
@@ -152,7 +154,7 @@ impl AsmEnv<'_> {
                     self.add_asm([Asm::JumpLabel(ok_overflow_jmp)]);
                 }
 
-                self.calculate_array_index(rank as u64, element_size);
+                self.calculate_array_index(rank as u64, element_size, 0);
 
                 self.add_instrs(
                     repeat_n(
@@ -241,26 +243,23 @@ impl AsmEnv<'_> {
                     self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
                 }
 
-                self.add_instrs(
-                    [Instr::Mov(
-                        Operand::Mem(MemLoc::RegOffset(
-                            Reg::Rsp,
-                            WORD_SIZE as i64 * loop_rank as i64,
-                        )),
-                        Operand::Reg(Reg::Rax),
-                    )]
-                    .into_iter()
-                    .chain(
-                        repeat_n(
-                            [
-                                Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0)),
-                                Instr::Push(Reg::Rax),
-                            ],
-                            loop_rank,
-                        )
-                        .flatten(),
-                    ),
-                );
+                self.add_instrs([Instr::Mov(
+                    Operand::Mem(MemLoc::RegOffset(
+                        Reg::Rsp,
+                        WORD_SIZE as i64 * loop_rank as i64,
+                    )),
+                    Operand::Reg(Reg::Rax),
+                )]);
+                for LoopVar(name, _) in looping_vars.iter().rev() {
+                    self.add_instrs([
+                        Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                        Instr::Push(Reg::Rax),
+                    ]);
+                    let var_name = name.as_str(self.env.src());
+                    self.var_locs
+                        .insert(var_name, self.fns[self.cur_fn].cur_stack_size as i64);
+                }
+
                 let loop_begining = self.next_jump();
                 self.add_asm([Asm::JumpLabel(loop_begining)]);
                 let old_scope = self.cur_scope;
@@ -268,14 +267,7 @@ impl AsmEnv<'_> {
                 self.gen_asm_expr(body);
                 self.cur_scope = old_scope;
                 if is_array {
-                    self.calculate_array_index(loop_rank as u64, element_size);
-                    self.add_instrs([Instr::Add(
-                        Operand::Reg(Reg::Rax),
-                        Operand::Mem(MemLoc::RegOffset(
-                            Reg::Rsp,
-                            loop_rank as i64 * 2 * WORD_SIZE as i64 + element_size as i64,
-                        )),
-                    )]);
+                    self.calculate_array_index(loop_rank as u64, element_size, element_size);
                     self.copy_from_stack(element_size, Reg::Rsp, Reg::Rax);
                     self.add_instrs([Instr::Add(
                         Operand::Reg(Reg::Rsp),

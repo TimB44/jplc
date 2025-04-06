@@ -109,7 +109,7 @@ impl Cmd {
         expect_tokens(ts, [TokenType::To])?;
         let lvalue = LValue::parse(ts, env)?;
         let loc = read_token.loc().join(str.loc());
-        env.add_let_lvalue(&lvalue, IMAGE_TYPE.clone())?;
+        env.add_lvalue(&lvalue, IMAGE_TYPE.clone())?;
         let number_of_bindings = lvalue.array_bindings().map(|b| b.len()).unwrap_or(2);
         if number_of_bindings != 2 {
             return Err(miette!(
@@ -147,7 +147,7 @@ impl Cmd {
         expect_tokens(ts, [TokenType::Equals])?;
         let expr = Expr::parse(ts, env)?;
 
-        env.add_let_lvalue(&lvalue, expr.type_data().clone())?;
+        env.add_lvalue(&lvalue, expr.type_data().clone())?;
         if let Some(bindings) = lvalue.array_bindings() {
             expr.expect_array_of_rank(bindings.len(), env)?;
         }
@@ -186,9 +186,8 @@ impl Cmd {
 
     fn parse_show(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [show_token] = expect_tokens(ts, [TokenType::Show])?;
-        let stack_was_aligned = env.align_stack(None);
+        // let stack_was_aligned = env.align_stack(0);
         let expr = Expr::parse(ts, env)?;
-        env.remove_stack_alginment(stack_was_aligned);
         let loc = show_token.loc().join(expr.loc());
         Ok(Self {
             kind: CmdKind::Show(expr),

@@ -43,7 +43,6 @@ pub struct FunctionInfo<'a> {
     args: Box<[TypeVal]>,
     ret: TypeVal,
     name: &'a str,
-    args_stack_size: u64,
     scope: usize,
 }
 
@@ -66,7 +65,6 @@ impl FunctionInfo<'_> {
 pub struct Scope<'a> {
     names: HashMap<&'a str, VarInfo>,
     // Stores with size of this scope plus all parent scopes until we hit a function scope
-    cur_size: u64,
     /// The index of its parent scope in the vec of scopes. 0 is always the index of the global
     /// scope. The parent of the global scope will be itself
     parent: usize,
@@ -81,14 +79,9 @@ impl<'a> Scope<'a> {
 #[derive(Debug, Clone)]
 pub struct VarInfo {
     var_type: TypeVal,
-    stack_loc: i64,
 }
 
 impl VarInfo {
-    pub fn stack_loc(&self) -> i64 {
-        self.stack_loc
-    }
-
     pub fn var_type(&self) -> &TypeVal {
         &self.var_type
     }
@@ -221,56 +214,28 @@ impl<'a> Environment<'a> {
     pub fn struct_info(&self) -> &[StructInfo<'a>] {
         &self.struct_info
     }
-
     pub fn add_function(
         &mut self,
         name: Span,
         args: &[Binding],
         ret_type: &Type,
     ) -> miette::Result<usize> {
-        assert!(self.cur_scope == GLOBAL_SCOPE_ID);
-        let scope = self.new_scope_with_size(0);
-        let ret = TypeVal::from_ast_type(ret_type, self)?;
+        let scope = self.new_scope();
 
         self.check_name_free(name)?;
         let name = name.as_str(self.src);
-        let mut g_regs_left = INT_REGS_FOR_ARGS.len()
-            - if matches!(ret, TypeVal::Array(_, _) | TypeVal::Struct(_)) {
-                // Add the size of the pointer to where the return type should be placed
-                self.scopes[self.cur_scope].cur_size += WORD_SIZE;
-                1
-            } else {
-                0
-            };
-        let mut fp_regs_left = FLOAT_REGS_FOR_ARGS.len();
-        let mut stack_args_offset = STACK_ARGS_OFFSET;
 
         let args = args
             .iter()
             .map(|arg| {
                 let arg_type = TypeVal::from_ast_type(arg.var_type(), self)?;
-                let type_size = self.type_size(&arg_type);
-                let ret = arg_type.clone();
-                match &arg_type {
-                    TypeVal::Int | TypeVal::Bool | TypeVal::Void if g_regs_left > 0 => {
-                        self.scopes[self.cur_scope].cur_size += WORD_SIZE;
-                        self.add_lvalue(arg.lvalue(), arg_type, None)?;
-                        g_regs_left -= 1;
-                    }
-                    TypeVal::Float if fp_regs_left > 0 => {
-                        self.scopes[self.cur_scope].cur_size += WORD_SIZE;
-                        self.add_lvalue(arg.lvalue(), arg_type, None)?;
-                        fp_regs_left -= 1;
-                    }
-                    _ => {
-                        self.add_lvalue(arg.lvalue(), arg_type, Some(stack_args_offset))?;
-                        stack_args_offset -= type_size as i64;
-                    }
-                }
-                Ok(ret)
+                self.add_lvalue(arg.lvalue(), arg_type.clone())?;
+                Ok(arg_type)
             })
             .collect::<miette::Result<Vec<_>>>()?
             .into_boxed_slice();
+
+        let ret = TypeVal::from_ast_type(ret_type, self)?;
 
         self.functions.insert(
             name,
@@ -279,12 +244,73 @@ impl<'a> Environment<'a> {
                 ret,
                 name,
                 scope,
-                args_stack_size: (stack_args_offset - stack_args_offset).abs() as u64,
             },
         );
-
         Ok(scope)
     }
+    // pub fn add_function(
+    //     &mut self,
+    //     name: Span,
+    //     args: &[Binding],
+    //     ret_type: &Type,
+    // ) -> miette::Result<usize> {
+    //     assert!(self.cur_scope == GLOBAL_SCOPE_ID);
+    //     let scope = self.new_scope_with_size(0);
+    //     let ret = TypeVal::from_ast_type(ret_type, self)?;
+    //
+    //     self.check_name_free(name)?;
+    //     let name = name.as_str(self.src);
+    //     let mut g_regs_left = INT_REGS_FOR_ARGS.len()
+    //         - if matches!(ret, TypeVal::Array(_, _) | TypeVal::Struct(_)) {
+    //             // Add the size of the pointer to where the return type should be placed
+    //             self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+    //             1
+    //         } else {
+    //             0
+    //         };
+    //     let mut fp_regs_left = FLOAT_REGS_FOR_ARGS.len();
+    //     let mut stack_args_offset = STACK_ARGS_OFFSET;
+    //
+    //     let args = args
+    //         .iter()
+    //         .map(|arg| {
+    //             let arg_type = TypeVal::from_ast_type(arg.var_type(), self)?;
+    //             let type_size = self.type_size(&arg_type);
+    //             let ret = arg_type.clone();
+    //             match &arg_type {
+    //                 TypeVal::Int | TypeVal::Bool | TypeVal::Void if g_regs_left > 0 => {
+    //                     self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+    //                     self.add_lvalue(arg.lvalue(), arg_type, None)?;
+    //                     g_regs_left -= 1;
+    //                 }
+    //                 TypeVal::Float if fp_regs_left > 0 => {
+    //                     self.scopes[self.cur_scope].cur_size += WORD_SIZE;
+    //                     self.add_lvalue(arg.lvalue(), arg_type, None)?;
+    //                     fp_regs_left -= 1;
+    //                 }
+    //                 _ => {
+    //                     self.add_lvalue(arg.lvalue(), arg_type, Some(stack_args_offset))?;
+    //                     stack_args_offset -= type_size as i64;
+    //                 }
+    //             }
+    //             Ok(ret)
+    //         })
+    //         .collect::<miette::Result<Vec<_>>>()?
+    //         .into_boxed_slice();
+    //
+    //     self.functions.insert(
+    //         name,
+    //         FunctionInfo {
+    //             args,
+    //             ret,
+    //             name,
+    //             scope,
+    //             args_stack_size: (stack_args_offset - stack_args_offset).abs() as u64,
+    //         },
+    //     );
+    //
+    //     Ok(scope)
+    // }
 
     pub fn end_scope(&mut self) {
         self.cur_scope = self.scopes[self.cur_scope].parent;
@@ -305,72 +331,31 @@ impl<'a> Environment<'a> {
         })
     }
 
-    fn new_scope_with_size(&mut self, size: u64) -> usize {
+    pub fn new_scope(&mut self) -> usize {
         self.scopes.push(Scope {
             names: HashMap::new(),
             parent: self.cur_scope,
-            cur_size: size,
         });
 
         self.cur_scope = self.scopes.len() - 1;
         self.cur_scope
     }
 
-    pub fn new_scope(&mut self) -> usize {
-        self.new_scope_with_size(self.scopes[self.cur_scope].cur_size)
-    }
-
-    pub fn add_loop_bounds(&mut self, loop_vars: &[LoopVar]) -> miette::Result<()> {
-        // Add the space used for accumulator/pointer and looping bounds
-        let cur_scope = &mut self.scopes[self.cur_scope];
-        cur_scope.cur_size += WORD_SIZE + loop_vars.len() as u64 * WORD_SIZE;
-        for LoopVar(name, _) in loop_vars.iter().rev() {
-            self.scopes[self.cur_scope].cur_size += WORD_SIZE;
-            self.add_name(*name, TypeVal::Int, None)?;
-        }
-        Ok(())
-    }
-
-    pub fn add_let_lvalue(&mut self, l_val: &LValue, var_type: TypeVal) -> miette::Result<()> {
-        let type_size = self.type_size(&var_type);
-        self.scopes[self.cur_scope].cur_size += type_size;
-        self.add_lvalue(l_val, var_type, None)?;
-        Ok(())
-    }
-
-    fn add_lvalue(
-        &mut self,
-        l_val: &LValue,
-        var_type: TypeVal,
-        stack_loc: Option<i64>,
-    ) -> miette::Result<()> {
-        let mut stack_loc = self.add_name(l_val.variable().loc(), var_type, stack_loc)?;
+    pub fn add_lvalue(&mut self, l_val: &LValue, var_type: TypeVal) -> miette::Result<()> {
+        self.add_name(l_val.variable().loc(), var_type)?;
         // Skip the pointer
         for Var(binding_name) in l_val.array_bindings().into_iter().flatten() {
-            self.add_name(*binding_name, TypeVal::Int, Some(stack_loc))?;
-            stack_loc -= WORD_SIZE as i64;
+            self.add_name(*binding_name, TypeVal::Int)?;
         }
         Ok(())
     }
 
-    fn add_name(
-        &mut self,
-        name: Span,
-        var_type: TypeVal,
-        stack_loc: Option<i64>,
-    ) -> miette::Result<i64> {
+    pub fn add_name(&mut self, name: Span, var_type: TypeVal) -> miette::Result<()> {
         self.check_name_free(name)?;
         let cur_scope = &mut self.scopes[self.cur_scope];
-        let stack_loc = stack_loc.unwrap_or(cur_scope.cur_size as i64);
         let name_str = name.as_str(self.src);
-        cur_scope.names.insert(
-            name_str,
-            VarInfo {
-                var_type: var_type.clone(),
-                stack_loc,
-            },
-        );
-        Ok(stack_loc)
+        cur_scope.names.insert(name_str, VarInfo { var_type });
+        Ok(())
     }
 
     fn check_name_free(&mut self, name: Span) -> miette::Result<()> {
@@ -490,32 +475,31 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn align_stack(&mut self, fn_name: Option<Span>) -> bool {
-        let args_stack_sapce = fn_name
-            .and_then(|name| self.get_function(name).ok())
-            .map(|info| info.args_stack_size)
-            .unwrap_or(0);
+    // pub fn align_stack(&mut self, left_to_add: u64) -> bool {
+    //     let cur_scope = &mut self.scopes[self.cur_scope];
+    //     let stack_size = cur_scope.cur_size
+    //         + left_to_add
+    //         + if self.cur_scope == GLOBAL_SCOPE_ID {
+    //             MAIN_FN_STARTING_STACK_SIZE
+    //         } else {
+    //             FN_STARTING_STACK_SIZE
+    //         };
+    //
+    //     if stack_size % STACK_FRAME_ALIGNMENT == 0 {
+    //         cur_scope.cur_size += WORD_SIZE;
+    //         true
+    //     } else {
+    //         false
+    //     }
+    // }
+    //
+    // pub fn remove_stack_alginment(&mut self, stack_was_aligned: bool) {
+    //     if stack_was_aligned {
+    //         self.scopes[self.cur_scope].cur_size -= WORD_SIZE;
+    //     }
+    // }
 
-        let cur_scope = &mut self.scopes[self.cur_scope];
-        let stack_size = cur_scope.cur_size
-            + args_stack_sapce
-            + if self.cur_scope == GLOBAL_SCOPE_ID {
-                MAIN_FN_STARTING_STACK_SIZE
-            } else {
-                FN_STARTING_STACK_SIZE
-            };
-
-        if stack_size % STACK_FRAME_ALIGNMENT != 0 {
-            cur_scope.cur_size += WORD_SIZE;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn remove_stack_alginment(&mut self, stack_was_aligned: bool) {
-        if stack_was_aligned {
-            self.scopes[self.cur_scope].cur_size -= WORD_SIZE;
-        }
+    pub fn cur_scope(&mut self) -> &mut Scope<'a> {
+        &mut self.scopes[self.cur_scope]
     }
 }

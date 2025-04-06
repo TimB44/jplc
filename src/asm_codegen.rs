@@ -3,7 +3,11 @@ use std::{borrow::Cow, collections::HashMap, hash::Hash};
 use fragments::{MAIN_EPILOGUE, MAIN_PROLOGE};
 
 use crate::{
-    ast::{expr::Expr, Program},
+    ast::{
+        auxiliary::{LValue, Var},
+        expr::Expr,
+        Program,
+    },
     environment::{Environment, GLOBAL_SCOPE_ID},
     typecheck::TypeVal,
 };
@@ -18,7 +22,6 @@ pub const WORD_SIZE: u64 = 8;
 
 const MAIN_FN_IDX: usize = 0;
 const MAIN_FN_NAME: &str = "jpl_main";
-//TODO: What is this
 pub const STARTING_ALIGNMENT: u64 = WORD_SIZE;
 pub const STACK_FRAME_ALIGNMENT: u64 = 16;
 // TODO: better names
@@ -41,6 +44,7 @@ pub const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
 pub struct AsmEnv<'a> {
     env: &'a Environment<'a>,
     consts: HashMap<ConstKind<'a>, u64>,
+    var_locs: HashMap<&'a str, i64>,
     jmp_ctr: u64,
     fns: Vec<AsmFn<'a>>,
     cur_fn: usize,
@@ -63,6 +67,7 @@ impl<'a> AsmEnv<'a> {
             consts: HashMap::new(),
             cur_fn: MAIN_FN_IDX,
             cur_scope: GLOBAL_SCOPE_ID,
+            var_locs: HashMap::from([("args", 0), ("argnum", 0)]),
         };
         asm_env.add_asm(MAIN_PROLOGE);
 
@@ -138,13 +143,9 @@ impl<'a> AsmEnv<'a> {
         self.add_asm(instrs.into_iter().map(Asm::Instr))
     }
 
-    // TODO memosize result
-
     fn align_stack(&mut self, left_to_add: u64) -> bool {
         assert_eq!(left_to_add % WORD_SIZE, 0);
-        let left_to_add = left_to_add % STACK_FRAME_ALIGNMENT;
-        let cur_alignment = self.fns[self.cur_fn].aligned();
-
+        let cur_alignment = &self.fns[self.cur_fn].aligned();
         let adjustment_aligned = left_to_add % STACK_FRAME_ALIGNMENT == 0;
 
         if cur_alignment ^ adjustment_aligned {
@@ -256,7 +257,7 @@ impl<'a> AsmEnv<'a> {
             self.gen_asm_expr(stack_args);
         }
 
-        let mut cur_int_arg = 0;
+        let mut cur_int_arg = INT_REGS_FOR_ARGS.len() - avaliable_int_args;
         let mut cur_float_arg = 0;
         for arg in args {
             match arg.type_data() {
@@ -357,11 +358,11 @@ impl<'a> AsmEnv<'a> {
         self.remove_stack_alignment(stack_was_aligned);
     }
 
-    fn calculate_array_index(&mut self, rank: u64, element_size: u64) {
+    fn calculate_array_index(&mut self, rank: u64, element_size: u64, staring_offset: u64) {
         self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
         for i in 0..rank {
-            let index_offset = i as u64 * WORD_SIZE;
-            let bound_offset = index_offset + rank as u64 * WORD_SIZE;
+            let index_offset = i as u64 * WORD_SIZE + staring_offset;
+            let bound_offset = index_offset + (rank as u64 * WORD_SIZE);
             self.add_instrs([
                 Instr::Mul(
                     Operand::Reg(Reg::Rax),
@@ -372,17 +373,28 @@ impl<'a> AsmEnv<'a> {
                     Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
                 ),
             ]);
+        }
 
-            self.add_instrs([
-                Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
-                Instr::Add(
-                    Operand::Reg(Reg::Rax),
-                    Operand::Mem(MemLoc::RegOffset(
-                        Reg::Rsp,
-                        rank as i64 * WORD_SIZE as i64 * 2,
-                    )),
-                ),
-            ]);
+        self.add_instrs([
+            Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
+            Instr::Add(
+                Operand::Reg(Reg::Rax),
+                Operand::Mem(MemLoc::RegOffset(
+                    Reg::Rsp,
+                    rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64,
+                )),
+            ),
+        ]);
+    }
+
+    fn add_lvalue(&mut self, lvalue: &LValue, loc: i64) {
+        let var_name = lvalue.variable().loc().as_str(self.env.src());
+        self.var_locs.insert(var_name, loc);
+        let mut lvalue_stack_loc = loc;
+        for Var(lvalue_loc) in lvalue.array_bindings().into_iter().flatten() {
+            let lvalue_name = lvalue_loc.as_str(self.env.src());
+            self.var_locs.insert(lvalue_name, lvalue_stack_loc);
+            lvalue_stack_loc -= WORD_SIZE as i64;
         }
     }
 }

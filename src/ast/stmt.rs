@@ -67,7 +67,7 @@ impl Stmt {
         let expr = Expr::parse(ts, env)?;
         let location = expr.loc().join(let_token.loc());
 
-        env.add_let_lvalue(&lvalue, expr.type_data().clone())?;
+        env.add_lvalue(&lvalue, expr.type_data().clone())?;
         if let Some(bindings) = lvalue.array_bindings() {
             expr.expect_array_of_rank(bindings.len(), env)?;
         }

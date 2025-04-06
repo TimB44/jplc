@@ -491,7 +491,6 @@ fn expr_to_ident<'b>(expr: &Expr, cenv: &mut CGenEnv<'_, 'b>) -> Ident<'b> {
         ExprKind::False => {
             assert_eq!(expr.type_data(), &TypeVal::Bool);
 
-            // Hack for autograder
             write_assign_stmt!(cenv, &TypeVal::Bool, "false")
         }
         ExprKind::Var => {

@@ -6,7 +6,7 @@ use crate::{
 
 use super::{
     fragments::PROLOGE, AsmEnv, AsmFn, ConstKind, Instr, MemLoc, Operand, Reg, FLOAT_REGS_FOR_ARGS,
-    INT_REGS_FOR_ARGS, MAIN_FN_IDX,
+    INT_REGS_FOR_ARGS, MAIN_FN_IDX, WORD_SIZE,
 };
 
 impl AsmEnv<'_> {
@@ -14,7 +14,10 @@ impl AsmEnv<'_> {
         match cmd.kind() {
             CmdKind::ReadImage(_, lvalue) => todo!(),
             CmdKind::WriteImage(expr, _) => todo!(),
-            CmdKind::Let(_, expr) => self.gen_asm_expr(expr),
+            CmdKind::Let(lvalue, expr) => {
+                self.gen_asm_expr(expr);
+                self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
+            }
 
             CmdKind::Assert(expr, _) => todo!(),
             CmdKind::Print(_) => todo!(),
@@ -37,7 +40,11 @@ impl AsmEnv<'_> {
             }
             CmdKind::Time(cmd) => todo!(),
             CmdKind::Function {
-                name, body, scope, ..
+                name,
+                body,
+                scope,
+                params,
+                ..
             } => {
                 let fn_info = self
                     .env
@@ -52,24 +59,36 @@ impl AsmEnv<'_> {
                 self.add_asm(PROLOGE);
                 let aggregate_ret_val =
                     matches!(fn_info.ret(), TypeVal::Array(_, _) | TypeVal::Struct(_));
-                let mut int_regs = &INT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
-                let mut fp_regs = &FLOAT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
-                self.add_instrs(fn_info.args().iter().filter_map(|arg| match arg {
-                    TypeVal::Int | TypeVal::Bool | TypeVal::Void if !int_regs.is_empty() => {
-                        let reg = int_regs[0];
-                        int_regs = &int_regs[1..];
-                        Some(Instr::Push(reg))
-                    }
-                    TypeVal::Float if !fp_regs.is_empty() => {
-                        let reg = fp_regs[0];
-                        fp_regs = &fp_regs[1..];
-                        Some(Instr::Push(reg))
-                    }
-                    _ => None,
-                }));
-
                 if aggregate_ret_val {
                     self.add_instrs([Instr::Push(Reg::Rdi)]);
+                }
+                let mut int_regs = &INT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
+                let mut fp_regs = FLOAT_REGS_FOR_ARGS.as_slice();
+
+                let mut stack_args_loc = 0;
+                for (arg, lvalue) in fn_info
+                    .args()
+                    .into_iter()
+                    .zip(params.into_iter().map(|b| b.lvalue()))
+                {
+                    match arg {
+                        TypeVal::Int | TypeVal::Bool | TypeVal::Void if !int_regs.is_empty() => {
+                            let reg = int_regs[0];
+                            int_regs = &int_regs[1..];
+                            self.add_instrs([(Instr::Push(reg))]);
+                            self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
+                        }
+                        TypeVal::Float if !fp_regs.is_empty() => {
+                            let reg = fp_regs[0];
+                            fp_regs = &fp_regs[1..];
+                            self.add_instrs([(Instr::Push(reg))]);
+                            self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
+                        }
+                        _ => {
+                            self.add_lvalue(lvalue, stack_args_loc);
+                            stack_args_loc -= self.env.type_size(arg) as i64;
+                        }
+                    }
                 }
 
                 for stmt in body {
