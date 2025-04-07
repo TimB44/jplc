@@ -13,8 +13,8 @@ pub struct Args {
     #[clap(flatten)]
     pub actions: Mode,
 
-    #[clap(flatten)]
-    pub opt: OptLevelArgs,
+    #[clap(short = 'O', value_parser, default_value_t = OptLevel::None)]
+    pub opt: OptLevel,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -41,12 +41,28 @@ pub struct Mode {
     pub assembly: bool,
 }
 
-#[derive(Debug, Clone, clap::Args)]
-#[group(required = false, multiple = false)]
-pub struct OptLevelArgs {
-    /// Basic assembly optimizations
-    #[clap(long = "O1")]
-    pub o1: bool,
+// #[derive(Debug, Clone, clap::Args)]
+// #[group(required = false, multiple = false)]
+// pub struct OptLevelArgs {
+//     /// Basic assembly optimizations
+//     #[clap(long = "O1")]
+//     pub o1: bool,
+// }
+
+use std::{fmt::Display, str::FromStr};
+
+impl FromStr for OptLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "0" => Ok(OptLevel::None),
+            "1" => Ok(OptLevel::O1),
+            // "2" | "O2" | "o2" => Ok(OptLevel::O2),
+            // "3" | "O3" | "o3" => Ok(OptLevel::O3),
+            _ => Err(format!("invalid optimization level '{}'", s)),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -55,12 +71,11 @@ pub enum OptLevel {
     O1,
 }
 
-impl From<OptLevelArgs> for OptLevel {
-    fn from(value: OptLevelArgs) -> Self {
-        if value.o1 {
-            OptLevel::O1
-        } else {
-            OptLevel::None
+impl Display for OptLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OptLevel::None => write!(f, "0"),
+            OptLevel::O1 => write!(f, "1"),
         }
     }
 }

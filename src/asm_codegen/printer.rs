@@ -69,7 +69,7 @@ impl Display for Instr<'_> {
             },
             Instr::Lea(reg, mem_loc) => write!(f, "lea {}, {}", reg, mem_loc),
             Instr::Call(name) => write!(f, "call _{}", name),
-            Instr::Push(reg) => match reg.kind() {
+            Instr::Push(Operand::Reg(reg)) => match reg.kind() {
                 RegKind::Int => {
                     write!(f, "push {}", reg)
                 }
@@ -88,6 +88,10 @@ impl Display for Instr<'_> {
                     )
                 }
             },
+            Instr::Push(op) => {
+                assert!(matches!(op, Operand::Value(val) if *val < u32::MAX as u64));
+                write!(f, "push qword {}", op)
+            }
             Instr::Pop(reg) => match reg.kind() {
                 RegKind::Int => {
                     write!(f, "pop {}", reg)

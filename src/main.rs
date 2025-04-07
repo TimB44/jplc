@@ -5,7 +5,6 @@ use std::fs::read;
 
 fn main() {
     let args = Args::parse();
-    let opt_level = args.opt.into();
 
     let bytes = read(&args.source).unwrap_or_else(|err| {
         exit_with_error(miette!(
@@ -33,5 +32,5 @@ fn main() {
         );
     });
 
-    compile(args.source, source, args.actions, opt_level);
+    compile(args.source, source, args.actions, args.opt);
 }

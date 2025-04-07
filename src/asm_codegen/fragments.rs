@@ -27,9 +27,9 @@ pub const HEADER: &[Asm] = &[
     Asm::Extern("_to_float"),
 ];
 pub const MAIN_PROLOGE: [Asm; 4] = [
-    Asm::Instr(Instr::Push(Reg::Rbp)),
+    Asm::Instr(Instr::Push(Operand::Reg(Reg::Rbp))),
     Asm::Instr(Instr::Mov(Operand::Reg(Reg::Rbp), Operand::Reg(Reg::Rsp))),
-    Asm::Instr(Instr::Push(Reg::R12)),
+    Asm::Instr(Instr::Push(Operand::Reg(Reg::R12))),
     Asm::Instr(Instr::Mov(Operand::Reg(Reg::R12), Operand::Reg(Reg::Rbp))),
 ];
 
@@ -40,7 +40,7 @@ pub const MAIN_EPILOGUE: [Asm; 3] = [
 ];
 
 pub const PROLOGE: [Asm; 2] = [
-    Asm::Instr(Instr::Push(Reg::Rbp)),
+    Asm::Instr(Instr::Push(Operand::Reg(Reg::Rbp))),
     Asm::Instr(Instr::Mov(Operand::Reg(Reg::Rbp), Operand::Reg(Reg::Rsp))),
 ];
 
@@ -52,6 +52,6 @@ pub fn load_const(const_id: u64) -> [Instr<'static>; 2] {
             Operand::Reg(Reg::Rax),
             Operand::Mem(MemLoc::Const(const_id)),
         ),
-        Instr::Push(Reg::Rax),
+        Instr::Push(Operand::Reg(Reg::Rax)),
     ]
 }

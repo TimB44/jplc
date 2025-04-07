@@ -417,7 +417,9 @@ impl AsmEnv<'_> {
         }
 
         match expr.kind() {
-            ExprKind::IntLit(v) if *v < u32::MAX as u64 => {}
+            ExprKind::IntLit(v) if *v < u32::MAX as u64 => {
+                self.add_instrs([Instr::Push(Operand::Value(*v))]);
+            }
             _ => return false,
         }
 
