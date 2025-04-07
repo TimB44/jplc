@@ -417,8 +417,30 @@ impl AsmEnv<'_> {
         }
 
         match expr.kind() {
-            ExprKind::IntLit(v) if *v < u32::MAX as u64 => {
+            ExprKind::True => {
+                self.add_instrs([Instr::Push(Operand::Value(1))]);
+            }
+            ExprKind::False => {
+                self.add_instrs([Instr::Push(Operand::Value(0))]);
+            }
+            //TODO maybe update
+            ExprKind::Void => {
+                self.add_instrs([Instr::Push(Operand::Value(1))]);
+            }
+            ExprKind::IntLit(v) if *v <= i32::MAX as u64 => {
                 self.add_instrs([Instr::Push(Operand::Value(*v))]);
+            }
+
+            ExprKind::If(args) => {
+                let [cond, true_branch, false_branch] = args.as_ref();
+
+                if !(matches!(cond.type_data(), TypeVal::Bool)
+                    && matches!(true_branch.kind(), ExprKind::IntLit(1))
+                    && matches!(false_branch.kind(), ExprKind::IntLit(0)))
+                {
+                    return false;
+                }
+                self.gen_asm_expr(cond);
             }
             _ => return false,
         }

@@ -8,7 +8,7 @@ compile:
 	cargo build 
 
 run: 
-	./target/debug/jplc $(TEST) 
+	./target/debug/jplc $(FLAGS) $(TEST) 
 
 clean:
 	cargo clean	
