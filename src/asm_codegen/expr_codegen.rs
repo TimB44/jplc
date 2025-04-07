@@ -6,6 +6,7 @@ use crate::{
         auxiliary::LoopVar,
         expr::{Expr, ExprKind},
     },
+    cli::OptLevel,
     typecheck::TypeVal,
 };
 
@@ -20,6 +21,9 @@ use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operan
 
 impl AsmEnv<'_> {
     pub fn gen_asm_expr(&mut self, expr: &Expr) {
+        if self.gen_asm_expr_opt(expr) {
+            return;
+        }
         match expr.kind() {
             ExprKind::IntLit(val) => {
                 let const_id = self.add_const(&ConstKind::Int(*val));
@@ -100,9 +104,9 @@ impl AsmEnv<'_> {
                 self.copy_from_stack(arr_size, Reg::Rsp, Reg::Rax);
                 self.add_instrs([
                     Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(arr_size)),
-                    Instr::Push(Reg::Rax),
+                    Instr::Push(Operand::Reg(Reg::Rax)),
                     Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(exprs.len() as u64)),
-                    Instr::Push(Reg::Rax),
+                    Instr::Push(Operand::Reg(Reg::Rax)),
                 ]);
             }
             ExprKind::StructInit(_, _) => todo!(),
@@ -253,7 +257,7 @@ impl AsmEnv<'_> {
                 for LoopVar(name, _) in looping_vars.iter().rev() {
                     self.add_instrs([
                         Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0)),
-                        Instr::Push(Reg::Rax),
+                        Instr::Push(Operand::Reg(Reg::Rax)),
                     ]);
                     let var_name = name.as_str(self.env.src());
                     self.var_locs
@@ -380,7 +384,7 @@ impl AsmEnv<'_> {
                 self.add_instrs([
                     Instr::Pop(Reg::Rax),
                     Instr::Xor(Operand::Reg(Reg::Rax), Operand::Value(1)),
-                    Instr::Push(Reg::Rax),
+                    Instr::Push(Operand::Reg(Reg::Rax)),
                 ]);
             }
             ExprKind::Negation(expr) => {
@@ -390,7 +394,7 @@ impl AsmEnv<'_> {
                         self.add_instrs([
                             Instr::Pop(Reg::Rax),
                             Instr::Neg(Reg::Rax),
-                            Instr::Push(Reg::Rax),
+                            Instr::Push(Operand::Reg(Reg::Rax)),
                         ]);
                     }
                     TypeVal::Float => {
@@ -398,13 +402,26 @@ impl AsmEnv<'_> {
                             Instr::Pop(Reg::Xmm1),
                             Instr::Xor(Operand::Reg(Reg::Xmm0), Operand::Reg(Reg::Xmm0)),
                             Instr::Sub(Operand::Reg(Reg::Xmm0), Operand::Reg(Reg::Xmm1)),
-                            Instr::Push(Reg::Xmm0),
+                            Instr::Push(Operand::Reg(Reg::Xmm0)),
                         ]);
                     }
                     _ => unreachable!(),
                 }
             }
         }
+    }
+
+    pub fn gen_asm_expr_opt(&mut self, expr: &Expr) -> bool {
+        if matches!(self.opt_level, OptLevel::None) {
+            return false;
+        }
+
+        match expr.kind() {
+            ExprKind::IntLit(v) if *v < u32::MAX as u64 => {}
+            _ => return false,
+        }
+
+        return true;
     }
 
     // User for most binops arithmetic binary operators except division and mod
@@ -422,7 +439,7 @@ impl AsmEnv<'_> {
                     Instr::Pop(Reg::Rax),
                     Instr::Pop(Reg::R10),
                     instr(Operand::Reg(Reg::Rax), Operand::Reg(Reg::R10)),
-                    Instr::Push(Reg::Rax),
+                    Instr::Push(Operand::Reg(Reg::Rax)),
                 ]);
             }
             TypeVal::Float => {
@@ -430,7 +447,7 @@ impl AsmEnv<'_> {
                     Instr::Pop(Reg::Xmm0),
                     Instr::Pop(Reg::Xmm1),
                     instr(Operand::Reg(Reg::Xmm0), Operand::Reg(Reg::Xmm1)),
-                    Instr::Push(Reg::Xmm0),
+                    Instr::Push(Operand::Reg(Reg::Xmm0)),
                 ]);
             }
             _ => unreachable!(),
@@ -481,7 +498,7 @@ impl AsmEnv<'_> {
 
         self.add_instrs([
             Instr::And(Operand::Reg(Reg::Rax), Operand::Value(1)),
-            Instr::Push(Reg::Rax),
+            Instr::Push(Operand::Reg(Reg::Rax)),
         ]);
     }
 
@@ -514,6 +531,6 @@ impl AsmEnv<'_> {
             self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Reg(Reg::Rdx))]);
         }
 
-        self.add_instrs([Instr::Push(Reg::Rax)]);
+        self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))]);
     }
 }

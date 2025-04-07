@@ -60,7 +60,7 @@ impl AsmEnv<'_> {
                 let aggregate_ret_val =
                     matches!(fn_info.ret(), TypeVal::Array(_, _) | TypeVal::Struct(_));
                 if aggregate_ret_val {
-                    self.add_instrs([Instr::Push(Reg::Rdi)]);
+                    self.add_instrs([Instr::Push(Operand::Reg(Reg::Rdi))]);
                 }
                 let mut int_regs = &INT_REGS_FOR_ARGS[if aggregate_ret_val { 1 } else { 0 }..];
                 let mut fp_regs = FLOAT_REGS_FOR_ARGS.as_slice();
@@ -75,13 +75,13 @@ impl AsmEnv<'_> {
                         TypeVal::Int | TypeVal::Bool | TypeVal::Void if !int_regs.is_empty() => {
                             let reg = int_regs[0];
                             int_regs = &int_regs[1..];
-                            self.add_instrs([(Instr::Push(reg))]);
+                            self.add_instrs([Instr::Push(Operand::Reg(reg))]);
                             self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
                         }
                         TypeVal::Float if !fp_regs.is_empty() => {
                             let reg = fp_regs[0];
                             fp_regs = &fp_regs[1..];
-                            self.add_instrs([(Instr::Push(reg))]);
+                            self.add_instrs([Instr::Push(Operand::Reg(reg))]);
                             self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
                         }
                         _ => {

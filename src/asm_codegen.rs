@@ -321,9 +321,9 @@ impl<'a> AsmEnv<'a> {
         self.remove_stack_alignment(stack_aligned);
         match ret_type {
             TypeVal::Int | TypeVal::Void | TypeVal::Bool => {
-                self.add_instrs([Instr::Push(Reg::Rax)])
+                self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))])
             }
-            TypeVal::Float => self.add_instrs([Instr::Push(Reg::Xmm0)]),
+            TypeVal::Float => self.add_instrs([Instr::Push(Operand::Reg(Reg::Xmm0))]),
             // Return value already placed on top of the stack
             TypeVal::Array(_, _) | TypeVal::Struct(_) => (),
         }
@@ -432,7 +432,7 @@ enum Instr<'a> {
     Lea(Reg, MemLoc),
     // does not have the leading _
     Call(&'a str),
-    Push(Reg),
+    Push(Operand),
     Pop(Reg),
     Add(Operand, Operand),
     Sub(Operand, Operand),
