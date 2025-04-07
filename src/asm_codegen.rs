@@ -464,6 +464,7 @@ enum Instr<'a> {
     Jge(u64),
     Jno(u64),
     Jg(u64),
+    Shl(Reg, u8),
     Cqo,
 }
 

@@ -89,7 +89,7 @@ impl Display for Instr<'_> {
                 }
             },
             Instr::Push(op) => {
-                assert!(matches!(op, Operand::Value(val) if *val < u32::MAX as u64));
+                assert!(matches!(op, Operand::Value(val) if *val <= i32::MAX as u64));
                 write!(f, "push qword {}", op)
             }
             Instr::Pop(reg) => match reg.kind() {
@@ -111,7 +111,6 @@ impl Display for Instr<'_> {
                     )
                 }
             },
-
             Instr::Add(Operand::Mem(mem_loc), Operand::Value(value)) => {
                 write!(f, "add qword {}, {}", mem_loc, value)
             }
@@ -168,6 +167,7 @@ impl Display for Instr<'_> {
             Instr::Cmple(lhs, rhs) => write!(f, "cmplesd {}, {}", lhs, rhs),
             Instr::Cmpeq(lhs, rhs) => write!(f, "cmpeqsd {}, {}", lhs, rhs),
             Instr::Cmpneq(lhs, rhs) => write!(f, "cmpneqsd {}, {}", lhs, rhs),
+            Instr::Shl(lhs, rhs) => write!(f, "shl {}, {}", lhs, rhs),
         }
     }
 }

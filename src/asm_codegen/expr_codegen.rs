@@ -442,6 +442,22 @@ impl AsmEnv<'_> {
                 }
                 self.gen_asm_expr(cond);
             }
+
+            ExprKind::Mulitply(operands) if expr.type_data() == &TypeVal::Int => {
+                let [lhs, rhs] = operands.as_ref();
+                return match rhs.kind() {
+                    ExprKind::IntLit(val) if (val.is_power_of_two()) => {
+                        self.gen_asm_expr(lhs);
+                        self.add_instrs([
+                            Instr::Pop(Reg::Rax),
+                            Instr::Shl(Reg::Rax, val.ilog2() as u8),
+                            Instr::Push(Operand::Reg(Reg::Rax)),
+                        ]);
+                        true
+                    }
+                    _ => false,
+                };
+            }
             _ => return false,
         }
 
