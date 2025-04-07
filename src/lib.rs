@@ -3,7 +3,7 @@ use std::time::Instant;
 use asm_codegen::AsmEnv;
 use ast::Program;
 use c_codegen::generate_c;
-use cli::Mode;
+use cli::{Mode, OptLevel};
 use environment::Environment;
 use lex::Lexer;
 use miette::NamedSource;
@@ -22,8 +22,9 @@ mod parse;
 mod typecheck;
 
 //TODO: Unsure about what to return
-pub fn compile(source_name: String, source: String, mode: Mode) {
+pub fn compile(source_name: String, source: String, mode: Mode, opt_level: OptLevel) {
     // TODO: Remove assertion for future assignments
+    // todo: make mode an enum
     assert!(
         mode.lex | mode.parse | mode.typecheck | mode.c_ir | mode.assembly,
         "Only lexing, parsing, typechecking, C IR, and parts assembly codegen implemented"
@@ -79,7 +80,7 @@ pub fn compile(source_name: String, source: String, mode: Mode) {
     }
 
     if mode.assembly {
-        let asm = AsmEnv::new(&env, program);
+        let asm = AsmEnv::new(&env, program, opt_level);
         print!("{}", asm);
         println!(
             "Compilation succeeded: x86-64 code generation complete in {}ms",

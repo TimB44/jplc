@@ -12,6 +12,9 @@ pub struct Args {
 
     #[clap(flatten)]
     pub actions: Mode,
+
+    #[clap(flatten)]
+    pub opt: OptLevelArgs,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -36,4 +39,28 @@ pub struct Mode {
     /// Generate assembly code
     #[clap(short = 's', long = "asm")]
     pub assembly: bool,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+#[group(required = false, multiple = false)]
+pub struct OptLevelArgs {
+    /// Basic assembly optimizations
+    #[clap(long = "O1")]
+    pub o1: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum OptLevel {
+    None,
+    O1,
+}
+
+impl From<OptLevelArgs> for OptLevel {
+    fn from(value: OptLevelArgs) -> Self {
+        if value.o1 {
+            OptLevel::O1
+        } else {
+            OptLevel::None
+        }
+    }
 }

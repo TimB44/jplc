@@ -8,6 +8,7 @@ use crate::{
         expr::Expr,
         Program,
     },
+    cli::OptLevel,
     environment::{Environment, GLOBAL_SCOPE_ID},
     typecheck::TypeVal,
 };
@@ -43,6 +44,7 @@ pub const FLOAT_REGS_FOR_ARGS: [Reg; 8] = [
 #[derive(Debug, Clone)]
 pub struct AsmEnv<'a> {
     env: &'a Environment<'a>,
+    opt_level: OptLevel,
     consts: HashMap<ConstKind<'a>, u64>,
     var_locs: HashMap<&'a str, i64>,
     jmp_ctr: u64,
@@ -58,10 +60,11 @@ struct AsmFn<'a> {
 }
 
 impl<'a> AsmEnv<'a> {
-    pub fn new(env: &'a Environment<'a>, typed_ast: Program) -> Self {
+    pub fn new(env: &'a Environment<'a>, typed_ast: Program, opt_level: OptLevel) -> Self {
         let main_fn = AsmFn::new(MAIN_FN_NAME);
         let mut asm_env = Self {
             env,
+            opt_level,
             fns: vec![main_fn],
             jmp_ctr: 1,
             consts: HashMap::new(),
