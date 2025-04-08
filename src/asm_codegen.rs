@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, hash::Hash};
+use std::{borrow::Cow, collections::HashMap, hash::Hash, iter::repeat};
 
 use fragments::{MAIN_EPILOGUE, MAIN_PROLOGE};
 
@@ -311,12 +311,6 @@ impl<'a> AsmEnv<'a> {
                         )
                     }),
             );
-
-            //FIXME: this is better but the autograder does not do it
-            //self.add_instrs([Instr::Add(
-            //    Operand::Reg(Reg::Rsp),
-            //    Operand::Value(stack_space_for_args),
-            //)]);
         }
 
         self.remove_stack_alignment(stack_aligned);
@@ -364,16 +358,17 @@ impl<'a> AsmEnv<'a> {
 
     fn calculate_array_index<'b>(
         &mut self,
-        mut loop_vars: impl ExactSizeIterator<Item = &'b Expr>,
+        rank: u64,
+        loop_vars: impl Iterator<Item = &'b Expr>,
         element_size: u64,
         staring_offset: u64,
+        gap: u64,
     ) {
-        let rank = loop_vars.len() as u64;
         if self.opt_level == OptLevel::None {
             self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
             for i in 0..rank {
                 let index_offset = i * WORD_SIZE + staring_offset;
-                let bound_offset = index_offset + (rank * WORD_SIZE);
+                let bound_offset = index_offset + (rank * WORD_SIZE) + gap;
                 self.add_instrs([
                     Instr::Mul(
                         Operand::Reg(Reg::Rax),
@@ -392,7 +387,7 @@ impl<'a> AsmEnv<'a> {
                     Operand::Reg(Reg::Rax),
                     Operand::Mem(MemLoc::RegOffset(
                         Reg::Rsp,
-                        rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64,
+                        rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64 + gap as i64,
                     )),
                 ),
             ]);
@@ -402,11 +397,19 @@ impl<'a> AsmEnv<'a> {
                 Operand::Mem(MemLoc::RegOffset(Reg::Rsp, staring_offset as i64)),
             )]);
 
-            for (i, e) in (1..rank).zip(loop_vars.skip(1)) {
+            for (i, bound_kind) in (1..rank).zip(
+                loop_vars
+                    .into_iter()
+                    .map(|e| Some(e.kind()))
+                    .skip(1)
+                    .chain(repeat(None)),
+            ) {
                 let index_offset = i * WORD_SIZE + staring_offset;
-                let bound_offset = index_offset + (rank * WORD_SIZE);
-                let loop_bound = match e.kind() {
-                    ExprKind::IntLit(v) if *v <= i32::MAX as u64 => Operand::Value(*v),
+                let bound_offset = index_offset + (rank * WORD_SIZE) + gap;
+                let loop_bound = match bound_kind {
+                    Some(ExprKind::IntLit(v)) if *v <= i32::MAX as u64 || v.is_power_of_two() => {
+                        Operand::Value(*v)
+                    }
                     _ => Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
                 };
                 self.add_instrs([
@@ -424,7 +427,7 @@ impl<'a> AsmEnv<'a> {
                     Operand::Reg(Reg::Rax),
                     Operand::Mem(MemLoc::RegOffset(
                         Reg::Rsp,
-                        rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64,
+                        rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64 + gap as i64,
                     )),
                 ),
             ]);

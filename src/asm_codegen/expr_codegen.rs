@@ -7,6 +7,7 @@ use crate::{
         expr::{Expr, ExprKind},
     },
     cli::OptLevel,
+    environment::GLOBAL_SCOPE_ID,
     typecheck::TypeVal,
 };
 
@@ -123,42 +124,8 @@ impl AsmEnv<'_> {
                 let rank = indices.len();
                 let element_size = self.env.type_size(expr.type_data());
                 self.gen_asm_expr(array_expr);
-                for index in indices.iter().rev() {
-                    self.gen_asm_expr(index);
-                }
-                let negative_err_str = self.add_const(&ConstKind::String(Cow::Borrowed(
-                    NEGATIVE_ARRAY_INDEX_ERR_MSG,
-                )));
-                let overflow_err_str =
-                    self.add_const(&ConstKind::String(Cow::Borrowed(INDEX_TOO_LARGE_ERR_MSG)));
-                for (i, _) in indices.iter().enumerate() {
-                    let index_offset = i as u64 * WORD_SIZE;
-                    let bound_offset = index_offset + rank as u64 * WORD_SIZE;
-                    let ok_negative_jmp = self.next_jump();
-                    let ok_overflow_jmp = self.next_jump();
-                    self.add_instrs([
-                        Instr::Mov(
-                            Operand::Reg(Reg::Rax),
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
-                        ),
-                        Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
-                        Instr::Jge(ok_negative_jmp),
-                    ]);
-                    self.fail_assertion(negative_err_str);
-                    self.add_asm([Asm::JumpLabel(ok_negative_jmp)]);
-
-                    self.add_instrs([
-                        Instr::Cmp(
-                            Operand::Reg(Reg::Rax),
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
-                        ),
-                        Instr::Jl(ok_overflow_jmp),
-                    ]);
-                    self.fail_assertion(overflow_err_str);
-                    self.add_asm([Asm::JumpLabel(ok_overflow_jmp)]);
-                }
-
-                self.calculate_array_index(indices.iter(), element_size, 0);
+                self.generate_index_bounds(indices, 0);
+                self.calculate_array_index(rank as u64, [].iter(), element_size, 0, 0);
 
                 self.add_instrs(
                     repeat_n(
@@ -272,9 +239,11 @@ impl AsmEnv<'_> {
                 self.cur_scope = old_scope;
                 if is_array {
                     self.calculate_array_index(
+                        loop_rank as u64,
                         looping_vars.iter().map(|LoopVar(_, expr)| expr),
                         element_size,
                         element_size,
+                        0,
                     );
                     self.copy_from_stack(element_size, Reg::Rsp, Reg::Rax);
                     self.add_instrs([Instr::Add(
@@ -434,6 +403,28 @@ impl AsmEnv<'_> {
             ExprKind::IntLit(v) if *v <= i32::MAX as u64 => {
                 self.add_instrs([Instr::Push(Operand::Value(*v))]);
             }
+            ExprKind::Mulitply(ops) => {
+                let [lhs, rhs] = ops.as_ref();
+                for [lhs, rhs] in [[lhs, rhs], [rhs, lhs]] {
+                    match lhs.kind() {
+                        ExprKind::IntLit(1) => {
+                            self.gen_asm_expr(rhs);
+                            return true;
+                        }
+                        ExprKind::IntLit(v) if v.is_power_of_two() => {
+                            self.gen_asm_expr(rhs);
+                            self.add_instrs([
+                                Instr::Pop(Reg::Rax),
+                                Instr::Shl(Operand::Reg(Reg::Rax), v.ilog2() as u8),
+                                Instr::Push(Operand::Reg(Reg::Rax)),
+                            ]);
+                            return true;
+                        }
+                        _ => (),
+                    };
+                }
+                return false;
+            }
 
             ExprKind::If(args) => {
                 let [cond, true_branch, false_branch] = args.as_ref();
@@ -445,6 +436,33 @@ impl AsmEnv<'_> {
                     return false;
                 }
                 self.gen_asm_expr(cond);
+            }
+
+            ExprKind::ArrayIndex(lhs, rhs)
+                if matches!(lhs.kind(), ExprKind::Var)
+                    && (self.env.is_local_var(lhs.loc(), self.cur_scope)
+                        || self.cur_fn == MAIN_FN_IDX) =>
+            {
+                let rank = rhs.len();
+                let element_size = self.env.type_size(expr.type_data());
+                let offset = self.fns[self.cur_fn].cur_stack_size as i64
+                    - self.var_locs[lhs.loc().as_str(self.env.src())];
+                self.generate_index_bounds(rhs, offset as u64);
+                self.calculate_array_index(
+                    rank as u64,
+                    [].iter(),
+                    self.env.type_size(expr.type_data()),
+                    0,
+                    offset as u64,
+                );
+                self.add_instrs([
+                    Instr::Add(
+                        Operand::Reg(Reg::Rsp),
+                        Operand::Value(WORD_SIZE * rank as u64),
+                    ),
+                    Instr::Sub(Operand::Reg(Reg::Rsp), Operand::Value(element_size)),
+                ]);
+                self.copy_from_stack(element_size, Reg::Rax, Reg::Rsp);
             }
             _ => return false,
         }
@@ -560,5 +578,43 @@ impl AsmEnv<'_> {
         }
 
         self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))]);
+    }
+
+    fn generate_index_bounds(&mut self, indices: &[Expr], gap: u64) {
+        let rank = indices.len();
+        for index in indices.iter().rev() {
+            self.gen_asm_expr(index);
+        }
+        let negative_err_str = self.add_const(&ConstKind::String(Cow::Borrowed(
+            NEGATIVE_ARRAY_INDEX_ERR_MSG,
+        )));
+        let overflow_err_str =
+            self.add_const(&ConstKind::String(Cow::Borrowed(INDEX_TOO_LARGE_ERR_MSG)));
+        for (i, _) in indices.iter().enumerate() {
+            let index_offset = i as u64 * WORD_SIZE;
+            let bound_offset = index_offset + rank as u64 * WORD_SIZE + gap;
+            let ok_negative_jmp = self.next_jump();
+            let ok_overflow_jmp = self.next_jump();
+            self.add_instrs([
+                Instr::Mov(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
+                ),
+                Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                Instr::Jge(ok_negative_jmp),
+            ]);
+            self.fail_assertion(negative_err_str);
+            self.add_asm([Asm::JumpLabel(ok_negative_jmp)]);
+
+            self.add_instrs([
+                Instr::Cmp(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
+                ),
+                Instr::Jl(ok_overflow_jmp),
+            ]);
+            self.fail_assertion(overflow_err_str);
+            self.add_asm([Asm::JumpLabel(ok_overflow_jmp)]);
+        }
     }
 }
