@@ -158,7 +158,7 @@ impl AsmEnv<'_> {
                     self.add_asm([Asm::JumpLabel(ok_overflow_jmp)]);
                 }
 
-                self.calculate_array_index(rank as u64, element_size, 0);
+                self.calculate_array_index(indices.iter(), element_size, 0);
 
                 self.add_instrs(
                     repeat_n(
@@ -271,7 +271,11 @@ impl AsmEnv<'_> {
                 self.gen_asm_expr(body);
                 self.cur_scope = old_scope;
                 if is_array {
-                    self.calculate_array_index(loop_rank as u64, element_size, element_size);
+                    self.calculate_array_index(
+                        looping_vars.iter().map(|LoopVar(_, expr)| expr),
+                        element_size,
+                        element_size,
+                    );
                     self.copy_from_stack(element_size, Reg::Rsp, Reg::Rax);
                     self.add_instrs([Instr::Add(
                         Operand::Reg(Reg::Rsp),
@@ -441,22 +445,6 @@ impl AsmEnv<'_> {
                     return false;
                 }
                 self.gen_asm_expr(cond);
-            }
-
-            ExprKind::Mulitply(operands) if expr.type_data() == &TypeVal::Int => {
-                let [lhs, rhs] = operands.as_ref();
-                return match rhs.kind() {
-                    ExprKind::IntLit(val) if (val.is_power_of_two()) => {
-                        self.gen_asm_expr(lhs);
-                        self.add_instrs([
-                            Instr::Pop(Reg::Rax),
-                            Instr::Shl(Reg::Rax, val.ilog2() as u8),
-                            Instr::Push(Operand::Reg(Reg::Rax)),
-                        ]);
-                        true
-                    }
-                    _ => false,
-                };
             }
             _ => return false,
         }

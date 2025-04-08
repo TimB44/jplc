@@ -65,7 +65,7 @@ impl FromStr for OptLevel {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptLevel {
     None,
     O1,

@@ -5,7 +5,7 @@ use fragments::{MAIN_EPILOGUE, MAIN_PROLOGE};
 use crate::{
     ast::{
         auxiliary::{LValue, Var},
-        expr::Expr,
+        expr::{Expr, ExprKind},
         Program,
     },
     cli::OptLevel,
@@ -88,6 +88,7 @@ impl<'a> AsmEnv<'a> {
         }
         asm_env.add_asm(MAIN_EPILOGUE);
 
+        asm_env.opt_pass();
         asm_env
     }
 
@@ -361,33 +362,73 @@ impl<'a> AsmEnv<'a> {
         self.remove_stack_alignment(stack_was_aligned);
     }
 
-    fn calculate_array_index(&mut self, rank: u64, element_size: u64, staring_offset: u64) {
-        self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
-        for i in 0..rank {
-            let index_offset = i * WORD_SIZE + staring_offset;
-            let bound_offset = index_offset + (rank * WORD_SIZE);
+    fn calculate_array_index<'b>(
+        &mut self,
+        mut loop_vars: impl ExactSizeIterator<Item = &'b Expr>,
+        element_size: u64,
+        staring_offset: u64,
+    ) {
+        let rank = loop_vars.len() as u64;
+        if self.opt_level == OptLevel::None {
+            self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
+            for i in 0..rank {
+                let index_offset = i * WORD_SIZE + staring_offset;
+                let bound_offset = index_offset + (rank * WORD_SIZE);
+                self.add_instrs([
+                    Instr::Mul(
+                        Operand::Reg(Reg::Rax),
+                        Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
+                    ),
+                    Instr::Add(
+                        Operand::Reg(Reg::Rax),
+                        Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
+                    ),
+                ]);
+            }
+
             self.add_instrs([
-                Instr::Mul(
-                    Operand::Reg(Reg::Rax),
-                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
-                ),
+                Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
                 Instr::Add(
                     Operand::Reg(Reg::Rax),
-                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
+                    Operand::Mem(MemLoc::RegOffset(
+                        Reg::Rsp,
+                        rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64,
+                    )),
+                ),
+            ]);
+        } else {
+            self.add_instrs([Instr::Mov(
+                Operand::Reg(Reg::Rax),
+                Operand::Mem(MemLoc::RegOffset(Reg::Rsp, staring_offset as i64)),
+            )]);
+
+            for (i, e) in (1..rank).zip(loop_vars.skip(1)) {
+                let index_offset = i * WORD_SIZE + staring_offset;
+                let bound_offset = index_offset + (rank * WORD_SIZE);
+                let loop_bound = match e.kind() {
+                    ExprKind::IntLit(v) if *v <= i32::MAX as u64 => Operand::Value(*v),
+                    _ => Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bound_offset as i64)),
+                };
+                self.add_instrs([
+                    Instr::Mul(Operand::Reg(Reg::Rax), loop_bound),
+                    Instr::Add(
+                        Operand::Reg(Reg::Rax),
+                        Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset as i64)),
+                    ),
+                ]);
+            }
+
+            self.add_instrs([
+                Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
+                Instr::Add(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(
+                        Reg::Rsp,
+                        rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64,
+                    )),
                 ),
             ]);
         }
-
-        self.add_instrs([
-            Instr::Mul(Operand::Reg(Reg::Rax), Operand::Value(element_size)),
-            Instr::Add(
-                Operand::Reg(Reg::Rax),
-                Operand::Mem(MemLoc::RegOffset(
-                    Reg::Rsp,
-                    rank as i64 * WORD_SIZE as i64 * 2 + staring_offset as i64,
-                )),
-            ),
-        ]);
     }
 
     fn add_lvalue(&mut self, lvalue: &LValue, loc: i64) {
@@ -398,6 +439,38 @@ impl<'a> AsmEnv<'a> {
             let lvalue_name = lvalue_loc.as_str(self.env.src());
             self.var_locs.insert(lvalue_name, lvalue_stack_loc);
             lvalue_stack_loc -= WORD_SIZE as i64;
+        }
+    }
+
+    fn opt_pass(&mut self) {
+        if self.opt_level == OptLevel::None {
+            return;
+        }
+
+        for asm_fn in &mut self.fns {
+            let mut old_text = Vec::with_capacity(asm_fn.text.len());
+            std::mem::swap(&mut old_text, &mut asm_fn.text);
+            for asm in old_text {
+                let instr = match asm {
+                    Asm::Instr(instr) => instr,
+                    asm @ _ => {
+                        asm_fn.text.push(asm);
+                        continue;
+                    }
+                };
+
+                match instr {
+                    Instr::Mul(lhs, Operand::Value(val)) if val.is_power_of_two() => {
+                        asm_fn
+                            .text
+                            .push(Asm::Instr(Instr::Shl(lhs, val.ilog2() as u8)));
+                    }
+                    asm @ _ => {
+                        asm_fn.text.push(Asm::Instr(asm));
+                        continue;
+                    }
+                }
+            }
         }
     }
 }
@@ -464,7 +537,7 @@ enum Instr<'a> {
     Jge(u64),
     Jno(u64),
     Jg(u64),
-    Shl(Reg, u8),
+    Shl(Operand, u8),
     Cqo,
 }
 
