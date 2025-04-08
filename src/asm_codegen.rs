@@ -456,7 +456,7 @@ impl<'a> AsmEnv<'a> {
             for asm in old_text {
                 let instr = match asm {
                     Asm::Instr(instr) => instr,
-                    asm @ _ => {
+                    asm => {
                         asm_fn.text.push(asm);
                         continue;
                     }
@@ -468,7 +468,7 @@ impl<'a> AsmEnv<'a> {
                             .text
                             .push(Asm::Instr(Instr::Shl(lhs, val.ilog2() as u8)));
                     }
-                    asm @ _ => {
+                    asm => {
                         asm_fn.text.push(Asm::Instr(asm));
                         continue;
                     }

@@ -7,7 +7,6 @@ use crate::{
         expr::{Expr, ExprKind},
     },
     cli::OptLevel,
-    environment::GLOBAL_SCOPE_ID,
     typecheck::TypeVal,
 };
 
@@ -467,7 +466,7 @@ impl AsmEnv<'_> {
             _ => return false,
         }
 
-        return true;
+        true
     }
 
     // User for most binops arithmetic binary operators except division and mod
