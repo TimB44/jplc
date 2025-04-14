@@ -5,6 +5,7 @@ all: run
 
 
 compile: 
+	git submodule update --init
 	cargo build 
 
 run: 

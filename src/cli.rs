@@ -58,8 +58,7 @@ impl FromStr for OptLevel {
         match s {
             "0" => Ok(OptLevel::None),
             "1" => Ok(OptLevel::O1),
-            // "2" | "O2" | "o2" => Ok(OptLevel::O2),
-            // "3" | "O3" | "o3" => Ok(OptLevel::O3),
+            "3" => Ok(OptLevel::O3),
             _ => Err(format!("invalid optimization level '{}'", s)),
         }
     }
@@ -69,6 +68,7 @@ impl FromStr for OptLevel {
 pub enum OptLevel {
     None,
     O1,
+    O3,
 }
 
 impl Display for OptLevel {
@@ -76,6 +76,7 @@ impl Display for OptLevel {
         match self {
             OptLevel::None => write!(f, "0"),
             OptLevel::O1 => write!(f, "1"),
+            OptLevel::O3 => write!(f, "3"),
         }
     }
 }
