@@ -13,7 +13,7 @@ impl AsmEnv<'_> {
                 self.gen_asm_expr(expr);
                 self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
             }
-            StmtType::Assert(_, _) => todo!(),
+            StmtType::Assert(cond, msg) => self.codegen_assert(cond, msg),
             StmtType::Return(expr) => {
                 self.gen_asm_expr(expr);
                 match expr.type_data() {
@@ -29,7 +29,7 @@ impl AsmEnv<'_> {
                             Operand::Mem(MemLoc::RegOffset(Reg::Rbp, -(WORD_SIZE as i64))),
                         )]);
 
-                        self.copy_from_stack(ret_type_size, Reg::Rsp, Reg::Rax);
+                        self.copy(ret_type_size, Reg::Rsp, 0, Reg::Rax, 0);
                     }
                 }
 

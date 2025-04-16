@@ -18,6 +18,9 @@ const NEGATIVE_ARRAY_INDEX_ERR_MSG: &str = "negative array index";
 const INDEX_TOO_LARGE_ERR_MSG: &str = "index too large";
 const NEGATIVE_LOOP_BOUND_ERR_MSG: &str = "non-positive loop bound";
 const OVERFLOW_ARRAY_ERR_MSG: &str = "overflow computing array size";
+const VOID_VALUE: u64 = 1;
+const TRUE_VALUE: u64 = 1;
+const FALSE_VALUE: u64 = 0;
 
 use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
@@ -38,12 +41,12 @@ impl AsmEnv<'_> {
                 self.add_instrs(load_const(const_id));
             }
             ExprKind::True => {
-                let const_id = self.add_const(&ConstKind::Int(1));
+                let const_id = self.add_const(&ConstKind::Int(TRUE_VALUE));
 
                 self.add_instrs(load_const(const_id));
             }
             ExprKind::False => {
-                let const_id = self.add_const(&ConstKind::Int(0));
+                let const_id = self.add_const(&ConstKind::Int(FALSE_VALUE));
 
                 self.add_instrs(load_const(const_id));
             }
@@ -89,7 +92,10 @@ impl AsmEnv<'_> {
                     ),
                 );
             }
-            ExprKind::Void => todo!(),
+            ExprKind::Void => {
+                let const_id = self.add_const(&ConstKind::Int(VOID_VALUE));
+                self.add_instrs(load_const(const_id));
+            }
             ExprKind::Paren(expr) => self.gen_asm_expr(expr.as_ref()),
             ExprKind::ArrayLit(exprs) => {
                 let element_size = self.env.type_size(exprs[0].type_data());
@@ -103,7 +109,7 @@ impl AsmEnv<'_> {
                 let stack_aligend = self.align_stack(0);
                 self.add_instrs([Instr::Call("jpl_alloc")]);
                 self.remove_stack_alignment(stack_aligend);
-                self.copy_from_stack(arr_size, Reg::Rsp, Reg::Rax);
+                self.copy(arr_size, Reg::Rsp, 0, Reg::Rax, 0);
                 self.add_instrs([
                     Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(arr_size)),
                     Instr::Push(Operand::Reg(Reg::Rax)),
@@ -111,7 +117,11 @@ impl AsmEnv<'_> {
                     Instr::Push(Operand::Reg(Reg::Rax)),
                 ]);
             }
-            ExprKind::StructInit(_, _) => todo!(),
+            ExprKind::StructInit(_, fields) => {
+                for field in fields.iter().rev() {
+                    self.gen_asm_expr(field);
+                }
+            }
             ExprKind::FunctionCall(name, args) => {
                 let fn_info = self
                     .env
@@ -120,7 +130,39 @@ impl AsmEnv<'_> {
 
                 self.call_fn(fn_info.name(), args, fn_info.ret());
             }
-            ExprKind::FieldAccess(_, _) => todo!(),
+            ExprKind::FieldAccess(struct_expr, field_name) => {
+                let field_str = field_name.as_str(self.env.src());
+                let struct_type = struct_expr.type_data().as_struct();
+                let struct_info = self.env.get_struct_id(struct_type);
+
+                let field_offset: u64 = struct_info
+                    .fields()
+                    .iter()
+                    .take_while(|(name, _)| *name != field_str)
+                    .map(|(_, ty)| self.env.type_size(ty))
+                    .sum();
+
+                let field_size = self.env.type_size(
+                    &struct_info
+                        .fields()
+                        .iter()
+                        .find(|(name, _)| *name != field_str)
+                        .expect("field should exist after typechecking")
+                        .1,
+                );
+                let size_diff = (self.env.type_size(struct_expr.type_data()) - field_size);
+                self.copy(
+                    field_size,
+                    Reg::Rsp,
+                    field_offset as i64,
+                    Reg::Rsp,
+                    size_diff as i64,
+                );
+                self.add_instrs([Instr::Sub(
+                    Operand::Reg(Reg::Rsp),
+                    Operand::Value(size_diff),
+                )]);
+            }
             ExprKind::ArrayIndex(array_expr, indices) => {
                 let rank = indices.len();
                 let element_size = self.env.type_size(expr.type_data());
@@ -142,7 +184,7 @@ impl AsmEnv<'_> {
                     ]),
                 );
 
-                self.copy_from_stack(element_size, Reg::Rax, Reg::Rsp);
+                self.copy(element_size, Reg::Rax, 0, Reg::Rsp, 0);
             }
             ExprKind::If(if_expr) => {
                 let [cond, true_branch, flase_branch] = if_expr.as_ref();
@@ -246,7 +288,7 @@ impl AsmEnv<'_> {
                         element_size,
                         0,
                     );
-                    self.copy_from_stack(element_size, Reg::Rsp, Reg::Rax);
+                    self.copy(element_size, Reg::Rsp, 0, Reg::Rax, 0);
                     self.add_instrs([Instr::Add(
                         Operand::Reg(Reg::Rsp),
                         Operand::Value(element_size),
@@ -325,8 +367,26 @@ impl AsmEnv<'_> {
                     )]);
                 }
             }
-            ExprKind::And(_) => todo!(),
-            ExprKind::Or(_) => todo!(),
+
+            ExprKind::Or(args) | ExprKind::And(args) => {
+                let is_or = matches!(expr.kind(), ExprKind::Or(_));
+                let [lhs, rhs] = args.as_ref();
+                self.gen_asm_expr(lhs);
+                let end_jmp = self.next_jump();
+                self.add_instrs([
+                    Instr::Pop(Reg::Rax),
+                    Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                    if is_or {
+                        Instr::Jne(end_jmp)
+                    } else {
+                        Instr::Je(end_jmp)
+                    },
+                ]);
+                self.gen_asm_expr(rhs);
+                self.add_asm([Asm::JumpLabel(end_jmp)]);
+                self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))]);
+            }
+
             ExprKind::LessThan(args)
             | ExprKind::GreaterThan(args)
             | ExprKind::LessThanEq(args)
@@ -348,7 +408,6 @@ impl AsmEnv<'_> {
                     self.gen_div_mod(args, false);
                 }
                 TypeVal::Float => {
-                    // TODO: Remove clone
                     self.call_fn("fmod", args.as_ref(), &TypeVal::Float);
                 }
                 _ => unreachable!(),
@@ -392,14 +451,13 @@ impl AsmEnv<'_> {
 
         match expr.kind() {
             ExprKind::True => {
-                self.add_instrs([Instr::Push(Operand::Value(1))]);
+                self.add_instrs([Instr::Push(Operand::Value(TRUE_VALUE))]);
             }
             ExprKind::False => {
-                self.add_instrs([Instr::Push(Operand::Value(0))]);
+                self.add_instrs([Instr::Push(Operand::Value(FALSE_VALUE))]);
             }
-            //TODO maybe update
             ExprKind::Void => {
-                self.add_instrs([Instr::Push(Operand::Value(1))]);
+                self.add_instrs([Instr::Push(Operand::Value(VOID_VALUE))]);
             }
             ExprKind::IntLit(v) if *v <= i32::MAX as u64 => {
                 self.add_instrs([Instr::Push(Operand::Value(*v))]);
@@ -463,7 +521,7 @@ impl AsmEnv<'_> {
                     ),
                     Instr::Sub(Operand::Reg(Reg::Rsp), Operand::Value(element_size)),
                 ]);
-                self.copy_from_stack(element_size, Reg::Rax, Reg::Rsp);
+                self.copy(element_size, Reg::Rax, 0, Reg::Rsp, 0);
             }
             _ => return false,
         }

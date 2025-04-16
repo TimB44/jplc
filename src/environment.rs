@@ -90,6 +90,10 @@ impl StructInfo<'_> {
     pub fn name(&self) -> &str {
         self.name
     }
+
+    pub fn size(&self) -> u64 {
+        self.size
+    }
 }
 
 impl<'a> Environment<'a> {

@@ -48,7 +48,6 @@ pub enum CmdKind {
         scope: usize,
     },
     Struct {
-        //TODO: use var here instead
         name: Var,
         fields: Box<[StructField]>,
     },

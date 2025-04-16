@@ -37,6 +37,13 @@ impl TypeVal {
             TypeVal::Void => "void".to_string(),
         }
     }
+
+    pub fn as_struct(&self) -> usize {
+        match self {
+            TypeVal::Struct(id) => *id,
+            _ => panic!("not a struct"),
+        }
+    }
 }
 /// Writes the type s-expression if opt is `SExprOptions::TypeVal`. If it is `SExprOptions::UnTypeVal` then it
 /// will not write anything. Note: unlike other s-expression writers this will print a space around it
