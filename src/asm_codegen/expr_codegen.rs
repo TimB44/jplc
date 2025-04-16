@@ -10,6 +10,8 @@ use crate::{
     typecheck::TypeVal,
 };
 
+mod loop_opt;
+
 const DIVIDE_BY_ZERO_ERR_MSG: &str = "divide by zero";
 const MOD_BY_ZERO_ERR_MSG: &str = "mod by zero";
 const NEGATIVE_ARRAY_INDEX_ERR_MSG: &str = "negative array index";
