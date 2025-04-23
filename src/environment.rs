@@ -382,11 +382,10 @@ impl<'a> Environment<'a> {
 
     pub fn type_size(&self, ty: &TypeVal) -> u64 {
         match ty {
-            TypeVal::Int | TypeVal::Bool | TypeVal::Float => WORD_SIZE,
+            TypeVal::Int | TypeVal::Bool | TypeVal::Float | TypeVal::Void => WORD_SIZE,
             TypeVal::Array(_, dims) => WORD_SIZE + WORD_SIZE * *dims as u64,
             TypeVal::Struct(id) => self.get_struct_id(*id).size,
             // IDK if this is correct.
-            TypeVal::Void => 0,
         }
     }
 
