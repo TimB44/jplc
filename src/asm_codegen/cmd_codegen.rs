@@ -1,22 +1,26 @@
 use std::borrow::Cow;
 
 use crate::{
-    ast::cmd::{Cmd, CmdKind},
+    asm_codegen::{fragments::EPILOGUE, FN_STARTING_STACK_SIZE, WORD_SIZE},
+    ast::{
+        cmd::{Cmd, CmdKind},
+        stmt::StmtType,
+        types::TypeKind,
+    },
     environment::{builtins::IMAGE_TYPE, GLOBAL_SCOPE_ID},
     typecheck::TypeVal,
 };
 
 use super::{
-    fragments::{load_const, PROLOGE},
-    AsmEnv, AsmFn, ConstKind, Instr, MemLoc, Operand, Reg, FLOAT_REGS_FOR_ARGS, INT_REGS_FOR_ARGS,
-    MAIN_FN_IDX,
+    fragments::PROLOGE, AsmEnv, AsmFn, ConstKind, Instr, MemLoc, Operand, Reg, FLOAT_REGS_FOR_ARGS,
+    INT_REGS_FOR_ARGS, MAIN_FN_IDX,
 };
 
 impl AsmEnv<'_> {
     pub fn gen_asm_cmd(&mut self, cmd: &Cmd) {
         match cmd.kind() {
             CmdKind::ReadImage(filename, lvalue) => {
-                let filename_str = filename.loc().as_str(self.env.src());
+                let filename_str = filename.inner_loc().as_str(self.env.src());
                 let filename_id = self.add_const(&ConstKind::String(Cow::Borrowed(filename_str)));
                 self.add_instrs([
                     Instr::Sub(
@@ -34,13 +38,17 @@ impl AsmEnv<'_> {
                 self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
             }
             CmdKind::WriteImage(expr, filename) => {
-                let filename_str = filename.loc().as_str(self.env.src());
-                let filename_id = self.add_const(&ConstKind::String(Cow::Borrowed(filename_str)));
-                let stack_was_aligned = self.align_stack(0);
+                let stack_was_aligned = self.align_stack(self.env.type_size(&IMAGE_TYPE));
                 self.gen_asm_expr(expr);
+                let filename_str = filename.inner_loc().as_str(self.env.src());
+                let filename_id = self.add_const(&ConstKind::String(Cow::Borrowed(filename_str)));
                 self.add_instrs([
-                    Instr::Lea(Reg::Rsi, MemLoc::Const(filename_id)),
-                    Instr::Call("read_image"),
+                    Instr::Lea(Reg::Rdi, MemLoc::Const(filename_id)),
+                    Instr::Call("write_image"),
+                    Instr::Add(
+                        Operand::Reg(Reg::Rsp),
+                        Operand::Value(self.env.type_size(&IMAGE_TYPE)),
+                    ),
                 ]);
                 self.remove_stack_alignment(stack_was_aligned);
             }
@@ -51,7 +59,7 @@ impl AsmEnv<'_> {
 
             CmdKind::Assert(cond, msg) => self.codegen_assert(cond, msg),
             CmdKind::Print(msg) => {
-                let msg_str = msg.loc().as_str(self.env.src());
+                let msg_str = msg.inner_loc().as_str(self.env.src());
                 let msg_id = self.add_const(&ConstKind::String(Cow::Borrowed(msg_str)));
                 self.add_instrs([Instr::Lea(Reg::Rdi, MemLoc::Const(msg_id))]);
                 let stack_was_aligned = self.align_stack(0);
@@ -76,49 +84,50 @@ impl AsmEnv<'_> {
                 self.remove_stack_alignment(stack_aligned);
             }
             CmdKind::Time(cmd) => {
+                //sub rsp, 8
+                //	movsd [rsp], xmm0
+                //	movsd xmm0, [rsp]
+                //	add rsp, 8
+                //	movsd xmm1, [rsp + 8]
+                //	subsd xmm0, xmm1
+                //	sub rsp, 8 ; Add alignment
+                //	call _print_time
+                //	add rsp, 8 ; Remove alignment
                 let stack_aligned = self.align_stack(0);
                 self.add_instrs([Instr::Call("get_time")]);
                 self.remove_stack_alignment(stack_aligned);
                 self.add_instrs([Instr::Push(Operand::Reg(Reg::Xmm0))]);
+
+                let stack_before = self.fns[self.cur_fn].cur_stack_size;
                 self.gen_asm_cmd(cmd);
+                let stack_after = self.fns[self.cur_fn].cur_stack_size;
 
                 let stack_aligned = self.align_stack(0);
                 self.add_instrs([Instr::Call("get_time")]);
                 self.remove_stack_alignment(stack_aligned);
 
                 self.add_instrs([
+                    Instr::Push(Operand::Reg(Reg::Xmm0)),
                     Instr::Pop(Reg::Xmm0),
-                    Instr::Mov(Operand::Reg(Reg::Xmm1), Operand::Mem(MemLoc::Reg(Reg::Rsp))),
+                    Instr::Mov(
+                        Operand::Reg(Reg::Xmm1),
+                        Operand::Mem(MemLoc::RegOffset(
+                            Reg::Rsp,
+                            (stack_after - stack_before) as i64,
+                        )),
+                    ),
                     Instr::Sub(Operand::Reg(Reg::Xmm0), Operand::Reg(Reg::Xmm1)),
                 ]);
                 let stack_aligned = self.align_stack(0);
                 self.add_instrs([Instr::Call("print_time")]);
                 self.remove_stack_alignment(stack_aligned);
-
-                // sub rsp, 8 ; Add alignment
-                // call _get_time
-                // add rsp, 8 ; Remove alignment
-                // sub rsp, 8
-                // movsd [rsp], xmm0
-                // lea rdi, [rel const0] ; 'hi'
-                // call _print
-                // call _get_time
-                // sub rsp, 8
-                // movsd [rsp], xmm0
-                // movsd xmm0, [rsp]
-                // add rsp, 8
-                // movsd xmm1, [rsp + 0]
-                // subsd xmm0, xmm1
-                // call _print_time
-                // add rsp, 8 ; Local variables
-                // pop r12 ; begin jpl_main postlude
             }
             CmdKind::Function {
                 name,
                 body,
                 scope,
                 params,
-                ..
+                return_type,
             } => {
                 let fn_info = self
                     .env
@@ -146,7 +155,7 @@ impl AsmEnv<'_> {
                     .zip(params.into_iter().map(|b| b.lvalue()))
                 {
                     match arg {
-                        TypeVal::Int | TypeVal::Bool | TypeVal::Void if !int_regs.is_empty() => {
+                        TypeVal::Int | TypeVal::Bool if !int_regs.is_empty() => {
                             let reg = int_regs[0];
                             int_regs = &int_regs[1..];
                             self.add_instrs([Instr::Push(Operand::Reg(reg))]);
@@ -165,8 +174,26 @@ impl AsmEnv<'_> {
                     }
                 }
 
+                let mut found_return = false;
                 for stmt in body {
+                    found_return |= matches!(stmt.kind(), StmtType::Return(_));
                     self.gen_asm_stmt(stmt);
+                }
+
+                if !found_return {
+                    assert!(matches!(return_type.kind(), TypeKind::Void));
+                    let local_vars_size =
+                        self.fns[self.cur_fn].cur_stack_size - FN_STARTING_STACK_SIZE;
+                    assert!(local_vars_size % WORD_SIZE == 0);
+                    //TODO: add if here
+                    if local_vars_size > 0 {
+                        self.add_instrs([Instr::Add(
+                            Operand::Reg(Reg::Rsp),
+                            Operand::Value(local_vars_size),
+                        )]);
+                    }
+
+                    self.add_asm(EPILOGUE);
                 }
                 // Epilogue added by return statment
                 self.cur_fn = MAIN_FN_IDX;

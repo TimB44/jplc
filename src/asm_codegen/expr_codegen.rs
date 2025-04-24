@@ -131,6 +131,7 @@ impl AsmEnv<'_> {
                 self.call_fn(fn_info.name(), args, fn_info.ret());
             }
             ExprKind::FieldAccess(struct_expr, field_name) => {
+                self.gen_asm_expr(struct_expr);
                 let field_str = field_name.as_str(self.env.src());
                 let struct_type = struct_expr.type_data().as_struct();
                 let struct_info = self.env.get_struct_id(struct_type);
@@ -146,7 +147,7 @@ impl AsmEnv<'_> {
                     &struct_info
                         .fields()
                         .iter()
-                        .find(|(name, _)| *name != field_str)
+                        .find(|(name, _)| *name == field_str)
                         .expect("field should exist after typechecking")
                         .1,
                 );
@@ -158,7 +159,7 @@ impl AsmEnv<'_> {
                     Reg::Rsp,
                     size_diff as i64,
                 );
-                self.add_instrs([Instr::Sub(
+                self.add_instrs([Instr::Add(
                     Operand::Reg(Reg::Rsp),
                     Operand::Value(size_diff),
                 )]);
@@ -383,6 +384,7 @@ impl AsmEnv<'_> {
                     },
                 ]);
                 self.gen_asm_expr(rhs);
+                self.add_instrs([Instr::Pop(Reg::Rax)]);
                 self.add_asm([Asm::JumpLabel(end_jmp)]);
                 self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))]);
             }

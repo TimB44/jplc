@@ -18,6 +18,9 @@ impl Str {
     pub fn loc(&self) -> Span {
         self.0
     }
+    pub fn inner_loc(&self) -> Span {
+        Span::new(self.0.start() + 1, self.0.len() - 2)
+    }
 }
 impl Parse for Str {
     fn parse(ts: &mut TokenStream, _: &mut Environment) -> miette::Result<Self> {

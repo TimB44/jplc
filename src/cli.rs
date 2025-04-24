@@ -58,6 +58,7 @@ impl FromStr for OptLevel {
         match s {
             "0" => Ok(OptLevel::None),
             "1" => Ok(OptLevel::O1),
+            "2" => Ok(OptLevel::None),
             // "2" | "O2" | "o2" => Ok(OptLevel::O2),
             // "3" | "O3" | "o3" => Ok(OptLevel::O3),
             _ => Err(format!("invalid optimization level '{}'", s)),
