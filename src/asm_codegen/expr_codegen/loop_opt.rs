@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{
     asm_codegen::AsmEnv,
@@ -37,18 +37,36 @@ impl<'a> AsmEnv<'a> {
             return None;
         }
 
+        let mut adjacency_list: HashMap<&str, HashSet<&str>> = HashMap::new();
+        for (src, dest) in &edges {
+            let x = adjacency_list.entry(src).or_default().insert(dest);
+        }
+
         let mut topo_order = Vec::new();
+
         let mut in_edges: HashMap<&'a str, usize> =
             HashMap::from_iter(vertices.iter().map(|s| (*s, 0)));
-
-        for (_, target) in edges {
-            in_edges[target] += 1;
+        for (_, target) in &edges {
+            *in_edges.get_mut(target).unwrap() += 1;
         }
+
         let mut q = VecDeque::from_iter(in_edges.iter().filter(|(_, v)| **v == 0).map(|(k, _)| *k));
 
-        while !q.is_empty() {}
+        while let Some(cur) = q.pop_front() {
+            topo_order.push(cur);
+            for target in &adjacency_list[cur] {
+                *in_edges.get_mut(target).unwrap() -= 1;
+                if in_edges[target] == 0 {
+                    q.push_back(target);
+                }
+            }
+        }
 
-        todo!()
+        if topo_order.len() == vertices.len() {
+            Some(topo_order)
+        } else {
+            None
+        }
     }
 
     fn is_tensor_body(
