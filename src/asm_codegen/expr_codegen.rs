@@ -8,6 +8,7 @@ use crate::{
     },
     cli::OptLevel,
     typecheck::TypeVal,
+    utils::Span,
 };
 
 mod loop_opt;
@@ -206,8 +207,8 @@ impl AsmEnv<'_> {
                 self.gen_asm_expr(flase_branch);
                 self.add_asm([Asm::JumpLabel(end_jump)]);
             }
-            ExprKind::ArrayComp(looping_vars, body, scope)
-            | ExprKind::Sum(looping_vars, body, scope) => {
+            ExprKind::ArrayComp(looping_vars, body, loop_scope)
+            | ExprKind::Sum(looping_vars, body, loop_scope) => {
                 let is_array = matches!(expr.kind(), ExprKind::ArrayComp(_, _, _));
                 let element_size = self.env.type_size(body.type_data());
                 self.add_instrs([Instr::Sub(
@@ -215,72 +216,18 @@ impl AsmEnv<'_> {
                     Operand::Value(WORD_SIZE),
                 )]);
                 let loop_rank = looping_vars.len();
-                for LoopVar(_, loop_bound) in looping_vars.iter().rev() {
-                    self.gen_asm_expr(loop_bound);
-                    let ok_jmp = self.next_jump();
-                    self.add_instrs([
-                        Instr::Mov(Operand::Reg(Reg::Rax), Operand::Mem(MemLoc::Reg(Reg::Rsp))),
-                        Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
-                        Instr::Jg(ok_jmp),
-                    ]);
-                    let err_msg_id = self.add_const(&ConstKind::String(Cow::Borrowed(
-                        NEGATIVE_LOOP_BOUND_ERR_MSG,
-                    )));
-                    self.fail_assertion(err_msg_id);
-                    self.add_asm([Asm::JumpLabel(ok_jmp)]);
-                }
+                self.check_loop_bounds(looping_vars.iter().rev().map(|LoopVar(_, e)| e));
                 if is_array {
-                    self.add_instrs([Instr::Mov(
-                        Operand::Reg(Reg::Rdi),
-                        Operand::Value(element_size),
-                    )]);
-                    let err_msg =
-                        self.add_const(&ConstKind::String(Cow::Borrowed(OVERFLOW_ARRAY_ERR_MSG)));
-                    for (i, _) in looping_vars.iter().enumerate() {
-                        let ok_jmp = self.next_jump();
-                        self.add_instrs([
-                            Instr::Mul(
-                                Operand::Reg(Reg::Rdi),
-                                Operand::Mem(MemLoc::RegOffset(
-                                    Reg::Rsp,
-                                    i as i64 * WORD_SIZE as i64,
-                                )),
-                            ),
-                            Instr::Jno(ok_jmp),
-                        ]);
-                        self.fail_assertion(err_msg);
-                        self.add_asm([Asm::JumpLabel(ok_jmp)])
-                    }
-                    let stack_was_aligned = self.align_stack(0);
-                    self.add_instrs([Instr::Call("jpl_alloc")]);
-                    self.remove_stack_alignment(stack_was_aligned);
+                    self.alloc_array(looping_vars, element_size);
                 } else {
                     self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
                 }
 
-                self.add_instrs([Instr::Mov(
-                    Operand::Mem(MemLoc::RegOffset(
-                        Reg::Rsp,
-                        WORD_SIZE as i64 * loop_rank as i64,
-                    )),
-                    Operand::Reg(Reg::Rax),
-                )]);
-                for LoopVar(name, _) in looping_vars.iter().rev() {
-                    self.add_instrs([
-                        Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0)),
-                        Instr::Push(Operand::Reg(Reg::Rax)),
-                    ]);
-                    let var_name = name.as_str(self.env.src());
-                    self.var_locs
-                        .insert(var_name, self.fns[self.cur_fn].cur_stack_size as i64);
-                }
+                self.store_loop_data(WORD_SIZE as i64 * loop_rank as i64);
 
-                let loop_begining = self.next_jump();
-                self.add_asm([Asm::JumpLabel(loop_begining)]);
-                let old_scope = self.cur_scope;
-                self.cur_scope = *scope;
-                self.gen_asm_expr(body);
-                self.cur_scope = old_scope;
+                self.init_loop_vars(looping_vars.iter().rev().map(|LoopVar(n, _)| n));
+                let loop_begining = self.gen_loop_body(body, *loop_scope);
+
                 if is_array {
                     self.calculate_array_index(
                         loop_rank as u64,
@@ -331,36 +278,22 @@ impl AsmEnv<'_> {
                     }
                 }
 
-                for i in (0..loop_rank).rev() {
-                    let index_offset = i as i64 * WORD_SIZE as i64;
-                    let bounds_offset = loop_rank as i64 * WORD_SIZE as i64 + index_offset;
-                    self.add_instrs([
-                        Instr::Add(
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
-                            Operand::Value(1),
-                        ),
-                        Instr::Mov(
-                            Operand::Reg(Reg::Rax),
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
-                        ),
-                        Instr::Cmp(
-                            Operand::Reg(Reg::Rax),
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bounds_offset)),
-                        ),
-                        Instr::Jl(loop_begining),
-                    ]);
+                self.gen_loop_increment(
+                    (0..loop_rank).rev().map(|i| {
+                        let index_offset = i as i64 * WORD_SIZE as i64;
+                        (
+                            index_offset,
+                            loop_rank as i64 * WORD_SIZE as i64 + index_offset,
+                        )
+                    }),
+                    loop_begining,
+                );
 
-                    if i > 0 {
-                        self.add_instrs([Instr::Mov(
-                            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
-                            Operand::Value(0),
-                        )]);
-                    }
-                }
                 self.add_instrs([Instr::Add(
                     Operand::Reg(Reg::Rsp),
                     Operand::Value(loop_rank as u64 * WORD_SIZE),
                 )]);
+
                 if !is_array {
                     self.add_instrs([Instr::Add(
                         Operand::Reg(Reg::Rsp),
@@ -447,8 +380,15 @@ impl AsmEnv<'_> {
     }
 
     pub fn gen_asm_expr_opt(&mut self, expr: &Expr) -> bool {
-        if matches!(self.opt_level, OptLevel::None) {
+        if self.opt_level == OptLevel::None {
             return false;
+        }
+
+        if self.opt_level == OptLevel::O3 {
+            let topo_order = match self.is_tensor(expr) {
+                Some(order) => order,
+                None => return false,
+            };
         }
 
         match expr.kind() {
@@ -676,6 +616,105 @@ impl AsmEnv<'_> {
             ]);
             self.fail_assertion(overflow_err_str);
             self.add_asm([Asm::JumpLabel(ok_overflow_jmp)]);
+        }
+    }
+
+    fn check_loop_bounds<'b, I: Iterator<Item = &'b Expr>>(&mut self, vars: I) {
+        for loop_bound in vars {
+            self.gen_asm_expr(loop_bound);
+            let ok_jmp = self.next_jump();
+            self.add_instrs([
+                Instr::Mov(Operand::Reg(Reg::Rax), Operand::Mem(MemLoc::Reg(Reg::Rsp))),
+                Instr::Cmp(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                Instr::Jg(ok_jmp),
+            ]);
+            let err_msg_id = self.add_const(&ConstKind::String(Cow::Borrowed(
+                NEGATIVE_LOOP_BOUND_ERR_MSG,
+            )));
+            self.fail_assertion(err_msg_id);
+            self.add_asm([Asm::JumpLabel(ok_jmp)]);
+        }
+    }
+
+    fn alloc_array(&mut self, looping_vars: &[LoopVar], element_size: u64) {
+        self.add_instrs([Instr::Mov(
+            Operand::Reg(Reg::Rdi),
+            Operand::Value(element_size),
+        )]);
+        let err_msg = self.add_const(&ConstKind::String(Cow::Borrowed(OVERFLOW_ARRAY_ERR_MSG)));
+        for (i, _) in looping_vars.iter().enumerate() {
+            let ok_jmp = self.next_jump();
+            self.add_instrs([
+                Instr::Mul(
+                    Operand::Reg(Reg::Rdi),
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, i as i64 * WORD_SIZE as i64)),
+                ),
+                Instr::Jno(ok_jmp),
+            ]);
+            self.fail_assertion(err_msg);
+            self.add_asm([Asm::JumpLabel(ok_jmp)])
+        }
+        let stack_was_aligned = self.align_stack(0);
+        self.add_instrs([Instr::Call("jpl_alloc")]);
+        self.remove_stack_alignment(stack_was_aligned);
+    }
+
+    fn store_loop_data(&mut self, offset: i64) {
+        self.add_instrs([Instr::Mov(
+            Operand::Mem(MemLoc::RegOffset(Reg::Rsp, offset)),
+            Operand::Reg(Reg::Rax),
+        )]);
+    }
+
+    fn init_loop_vars<'b, I: Iterator<Item = &'b Span>>(&mut self, vars: I) {
+        for name in vars.copied() {
+            self.add_instrs([
+                Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0)),
+                Instr::Push(Operand::Reg(Reg::Rax)),
+            ]);
+            let var_name = name.as_str(self.env.src());
+            self.var_locs
+                .insert(var_name, self.fns[self.cur_fn].cur_stack_size as i64);
+        }
+    }
+    fn gen_loop_body(&mut self, body: &Expr, loop_scope: usize) -> u64 {
+        let loop_begining = self.next_jump();
+        self.add_asm([Asm::JumpLabel(loop_begining)]);
+        let old_scope = self.cur_scope;
+        self.cur_scope = loop_scope;
+        self.gen_asm_expr(body);
+        self.cur_scope = old_scope;
+        loop_begining
+    }
+    fn gen_loop_increment<I: ExactSizeIterator<Item = (i64, i64)>>(
+        &mut self,
+        bounds_loc: I,
+        loop_begining: u64,
+    ) {
+        let rank = bounds_loc.len();
+        for (i, (index_offset, bounds_offset)) in bounds_loc.enumerate() {
+            self.add_instrs([
+                Instr::Add(
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
+                    Operand::Value(1),
+                ),
+                Instr::Mov(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
+                ),
+                Instr::Cmp(
+                    Operand::Reg(Reg::Rax),
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, bounds_offset)),
+                ),
+                Instr::Jl(loop_begining),
+            ]);
+
+            if i < rank - 1 {
+                self.add_instrs([Instr::Mov(
+                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, index_offset)),
+                    Operand::Value(0),
+                )]);
+            }
         }
     }
 }
