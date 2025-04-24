@@ -41,15 +41,14 @@ pub struct Mode {
     pub assembly: bool,
 }
 
-// #[derive(Debug, Clone, clap::Args)]
-// #[group(required = false, multiple = false)]
-// pub struct OptLevelArgs {
-//     /// Basic assembly optimizations
-//     #[clap(long = "O1")]
-//     pub o1: bool,
-// }
-
 use std::{fmt::Display, str::FromStr};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OptLevel {
+    None,
+    O1,
+    O3,
+}
 
 impl FromStr for OptLevel {
     type Err = String;
@@ -58,7 +57,7 @@ impl FromStr for OptLevel {
         match s {
             "0" => Ok(OptLevel::None),
             "1" => Ok(OptLevel::O1),
-            "2" => Ok(OptLevel::None),
+            "2" => Ok(OptLevel::O1),
             // "2" | "O2" | "o2" => Ok(OptLevel::O2),
             // "3" | "O3" | "o3" => Ok(OptLevel::O3),
             _ => Err(format!("invalid optimization level '{}'", s)),
@@ -66,17 +65,12 @@ impl FromStr for OptLevel {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OptLevel {
-    None,
-    O1,
-}
-
 impl Display for OptLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OptLevel::None => write!(f, "0"),
             OptLevel::O1 => write!(f, "1"),
+            OptLevel::O3 => write!(f, "3"),
         }
     }
 }
