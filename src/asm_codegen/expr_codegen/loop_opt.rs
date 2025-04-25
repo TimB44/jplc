@@ -38,24 +38,25 @@ impl<'a> AsmEnv<'a> {
             .map(|LoopVar(n, _)| n.as_str(self.env.src()))
             .collect();
 
-        let mut edges = Vec::new();
+        let mut edges = HashSet::new();
         if !self.is_tensor_body(&sum_body, &vertices, &mut edges) {
             return None;
         }
 
-        let mut adjacency_list: HashMap<&str, HashSet<&str>> = HashMap::new();
+        let mut adjacency_list: HashMap<&str, HashSet<&str>> = HashMap::from_iter(
+            arr_loop_vars
+                .into_iter()
+                .chain(sum_loop_vars)
+                .map(|LoopVar(name_loc, _)| (name_loc.as_str(self.env.src()), HashSet::new())),
+        );
+        let mut in_edges: HashMap<&'a str, usize> =
+            HashMap::from_iter(vertices.iter().map(|s| (*s, 0)));
         for (src, dest) in &edges {
-            adjacency_list.entry(src).or_default().insert(dest);
+            adjacency_list.get_mut(src).unwrap().insert(dest);
+            *in_edges.get_mut(dest).unwrap() += 1;
         }
 
         let mut topo_order = Vec::new();
-
-        let mut in_edges: HashMap<&'a str, usize> =
-            HashMap::from_iter(vertices.iter().map(|s| (*s, 0)));
-        for (_, target) in &edges {
-            *in_edges.get_mut(target).unwrap() += 1;
-        }
-
         let mut q = VecDeque::from_iter(in_edges.iter().filter(|(_, v)| **v == 0).map(|(k, _)| *k));
 
         while let Some(cur) = q.pop_front() {
@@ -68,7 +69,7 @@ impl<'a> AsmEnv<'a> {
             }
         }
 
-        if topo_order.len() == vertices.len() {
+        if topo_order.len() == adjacency_list.len() {
             Some(TensorInfo {
                 topo_order,
                 array: (arr_loop_vars, arr_body, *arr_scope),
@@ -83,7 +84,7 @@ impl<'a> AsmEnv<'a> {
         &self,
         expr: &Expr,
         vertices: &[&str],
-        edges: &mut Vec<(&'a str, &'a str)>,
+        edges: &mut HashSet<(&'a str, &'a str)>,
     ) -> bool {
         (match expr.kind() {
             ExprKind::ArrayIndex(expr, indices) => {
@@ -97,7 +98,7 @@ impl<'a> AsmEnv<'a> {
                         .filter(|v| vertices.contains(v))
                         .collect();
 
-                    edges.extend(indices.windows(2).map(|w| (w[0], w[1])));
+                    edges.extend(indices.windows(2).map(|w| (w[1], w[0])));
                     true
                 } else {
                     false
@@ -180,7 +181,10 @@ impl<'a> AsmEnv<'a> {
                 ]);
             }
             TypeVal::Int => {
-                todo!()
+                self.add_instrs([
+                    Instr::Pop(Reg::R10),
+                    Instr::Add(Operand::Mem(MemLoc::Reg(Reg::Rax)), Operand::Reg(Reg::R10)),
+                ]);
             }
             _ => unreachable!(),
         }
