@@ -201,6 +201,7 @@ impl AsmEnv<'_> {
                 ]);
                 self.gen_asm_expr(true_branch);
                 self.add_asm([Asm::Instr(Instr::Jmp(end_jump)), Asm::JumpLabel(false_jump)]);
+
                 // In this branch we have not pushed the output item on the stack yet so reset the
                 // stack to what is was before the true branch
                 self.fns[self.cur_fn].cur_stack_size -= output_size;
@@ -216,16 +217,16 @@ impl AsmEnv<'_> {
                     Operand::Value(WORD_SIZE),
                 )]);
                 let loop_rank = looping_vars.len();
-                self.check_loop_bounds(looping_vars.iter().rev().map(|LoopVar(_, e)| e));
+                self.check_loop_bounds(looping_vars);
                 if is_array {
-                    self.alloc_array(looping_vars, element_size);
+                    self.alloc_array(looping_vars, element_size, 0);
                 } else {
                     self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0))]);
                 }
 
                 self.store_loop_data(WORD_SIZE as i64 * loop_rank as i64);
 
-                self.init_loop_vars(looping_vars.iter().rev().map(|LoopVar(n, _)| n));
+                self.init_loop_vars(looping_vars);
                 let loop_begining = self.gen_loop_body(body, *loop_scope);
 
                 if is_array {
@@ -385,10 +386,10 @@ impl AsmEnv<'_> {
         }
 
         if self.opt_level == OptLevel::O3 {
-            let topo_order = match self.is_tensor(expr) {
-                Some(order) => order,
-                None => return false,
-            };
+            if let Some(tensor_info) = self.is_tensor(expr) {
+                self.codegen_tensor(tensor_info);
+                return true;
+            }
         }
 
         match expr.kind() {
@@ -619,9 +620,9 @@ impl AsmEnv<'_> {
         }
     }
 
-    fn check_loop_bounds<'b, I: Iterator<Item = &'b Expr>>(&mut self, vars: I) {
-        for loop_bound in vars {
-            self.gen_asm_expr(loop_bound);
+    fn check_loop_bounds(&mut self, vars: &[LoopVar]) {
+        for LoopVar(_, bound) in vars.into_iter().rev() {
+            self.gen_asm_expr(bound);
             let ok_jmp = self.next_jump();
             self.add_instrs([
                 Instr::Mov(Operand::Reg(Reg::Rax), Operand::Mem(MemLoc::Reg(Reg::Rsp))),
@@ -636,7 +637,7 @@ impl AsmEnv<'_> {
         }
     }
 
-    fn alloc_array(&mut self, looping_vars: &[LoopVar], element_size: u64) {
+    fn alloc_array(&mut self, looping_vars: &[LoopVar], element_size: u64, offset: i64) {
         self.add_instrs([Instr::Mov(
             Operand::Reg(Reg::Rdi),
             Operand::Value(element_size),
@@ -647,7 +648,10 @@ impl AsmEnv<'_> {
             self.add_instrs([
                 Instr::Mul(
                     Operand::Reg(Reg::Rdi),
-                    Operand::Mem(MemLoc::RegOffset(Reg::Rsp, i as i64 * WORD_SIZE as i64)),
+                    Operand::Mem(MemLoc::RegOffset(
+                        Reg::Rsp,
+                        i as i64 * WORD_SIZE as i64 + offset,
+                    )),
                 ),
                 Instr::Jno(ok_jmp),
             ]);
@@ -666,13 +670,13 @@ impl AsmEnv<'_> {
         )]);
     }
 
-    fn init_loop_vars<'b, I: Iterator<Item = &'b Span>>(&mut self, vars: I) {
-        for name in vars.copied() {
+    fn init_loop_vars(&mut self, vars: &[LoopVar]) {
+        for LoopVar(name_loc, _) in vars.iter().rev() {
             self.add_instrs([
                 Instr::Mov(Operand::Reg(Reg::Rax), Operand::Value(0)),
                 Instr::Push(Operand::Reg(Reg::Rax)),
             ]);
-            let var_name = name.as_str(self.env.src());
+            let var_name = name_loc.as_str(self.env.src());
             self.var_locs
                 .insert(var_name, self.fns[self.cur_fn].cur_stack_size as i64);
         }

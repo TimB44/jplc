@@ -45,6 +45,7 @@ impl Display for Asm<'_> {
             Asm::Instr(instr) => writeln!(f, "{}{}", INDENTATION, instr),
             Asm::FnLabel(name) => write!(f, "{}:\n_{}:\n", name, name),
             Asm::JumpLabel(id) => writeln!(f, ".jump{}:", id),
+            Asm::Comment(msg) => writeln!(f, "; {}:", msg),
         }
     }
 }

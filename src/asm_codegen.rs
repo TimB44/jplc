@@ -511,6 +511,7 @@ enum Asm<'a> {
     Instr(Instr<'a>),
     FnLabel(&'a str),
     JumpLabel(u64),
+    Comment(&'static str),
 }
 
 #[derive(Clone, Debug)]
