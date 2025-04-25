@@ -43,7 +43,7 @@ pub struct Mode {
 
 use std::{fmt::Display, str::FromStr};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OptLevel {
     None,
     O1,
@@ -58,8 +58,7 @@ impl FromStr for OptLevel {
             "0" => Ok(OptLevel::None),
             "1" => Ok(OptLevel::O1),
             "2" => Ok(OptLevel::O1),
-            // "2" | "O2" | "o2" => Ok(OptLevel::O2),
-            // "3" | "O3" | "o3" => Ok(OptLevel::O3),
+            "3" => Ok(OptLevel::O3),
             _ => Err(format!("invalid optimization level '{}'", s)),
         }
     }
