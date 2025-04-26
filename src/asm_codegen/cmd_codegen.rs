@@ -37,7 +37,7 @@ impl AsmEnv<'_> {
                     Instr::Call(Operand::Label("read_image")),
                 ]);
                 self.remove_stack_alignment(stack_was_aligned);
-                self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
+                self.add_lvalue(lvalue, self.cur_stack_size() as i64);
             }
             CmdKind::WriteImage(expr, filename) => {
                 let stack_was_aligned = self.align_stack(self.env.type_size(&IMAGE_TYPE));

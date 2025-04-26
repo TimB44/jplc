@@ -210,6 +210,11 @@ impl<'a> AsmEnv<'a> {
             }
         };
 
+        if let None = name {
+            self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))]);
+        }
+
+        let stack_when_fn_pointer_pushed = self.cur_stack_size();
         let num_int_args = args
             .iter()
             .map(|e| e.type_data())
@@ -308,6 +313,17 @@ impl<'a> AsmEnv<'a> {
             )]);
         }
 
+        if let None = name {
+            let cur_stack_size = self.cur_stack_size();
+            self.add_instrs([Instr::Mov(
+                Operand::Reg(Reg::Rax),
+                Operand::Mem(MemLoc::RegOffset(
+                    Reg::Rsp,
+                    (cur_stack_size - stack_when_fn_pointer_pushed) as i64,
+                )),
+            )]);
+        }
+
         self.add_instrs([Instr::Call(
             name.map(|s| Operand::Label(s))
                 .unwrap_or(Operand::Reg(Reg::Rax)),
@@ -338,6 +354,16 @@ impl<'a> AsmEnv<'a> {
         }
 
         self.remove_stack_alignment(stack_aligned);
+
+        if let None = name {
+            self.add_asm([
+                Asm::Comment("Removing function pointer after call"),
+                Asm::Instr(Instr::Add(
+                    Operand::Reg(Reg::Rsp),
+                    Operand::Value(WORD_SIZE),
+                )),
+            ]);
+        }
         match ret_type {
             TypeVal::Int | TypeVal::Void | TypeVal::Bool | TypeVal::FnPointer(_, _) => {
                 self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))])
@@ -514,6 +540,10 @@ impl<'a> AsmEnv<'a> {
         ]);
         self.fail_assertion(msg_id);
         self.add_asm([Asm::JumpLabel(ok_jmp)]);
+    }
+
+    fn cur_stack_size(&self) -> u64 {
+        self.fns[self.cur_fn].cur_stack_size
     }
 }
 
