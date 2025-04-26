@@ -1,0 +1,52 @@
+fn arr_copy(arr[N]: int[], start: int, end: int): int[] {
+  let size = end - start
+  return array[i: size] arr[start + i]
+}
+
+fn merge_both_have(left[l_end]: int[], l_cur: int, right[r_end]: int[], r_cur: int, cmp: fn(int, int) -> int, merge: fn(int[], int, int[], int, fn(int, int) -> int) -> int[]): int[] {
+  let l_size = l_end - l_cur
+  let r_size = r_end - r_cur
+
+  let left_smaller = cmp(left[l_cur], right[r_cur]) <= 0
+  let smallest = if left_smaller then left[l_cur] else right[r_cur]
+  let rest =  if left_smaller then merge(left, l_cur + 1, right, r_cur, cmp) else merge(left, l_cur, right, r_cur + 1, cmp)
+
+  return array[i: l_size + r_size] if i == 0 then smallest else rest[i - 1]
+}
+
+fn merge(left[l_end]: int[], l_cur: int, right[r_end]: int[], r_cur: int, cmp: fn(int, int) -> int): int[] {
+  let l_size = l_end - l_cur
+  let r_size = r_end - r_cur
+  return if r_size == 0 then arr_copy(left, l_cur, l_end)  else \
+         if l_size == 0 then arr_copy(right, r_cur, r_end) else \
+         merge_both_have(left, l_cur, right, r_cur, cmp, merge)
+}
+
+fn merge_sort(arr: int[], start: int, end: int, cmp: fn(int, int) -> int): int[] {
+  let size = end - start
+  let mid = start + size / 2
+  return if size < 2 then arr_copy(arr, start, end) else merge(merge_sort(arr, start, mid, cmp), 0, merge_sort(arr, mid, end, cmp), 0, cmp)
+
+}
+
+fn sort(arr[N]: int[], cmp: fn(int, int) -> int): int[] {
+  return merge_sort(arr, 0, N, cmp)
+
+}
+
+fn increasing(a: int, b:int): int {
+  return a - b
+}
+fn decreasing(a: int, b:int): int {
+  return b - a
+}
+
+fn evens_then_odds(a: int, b: int): int {
+  let a_value = if a % 2 == 0 then 0 else 1
+  let b_value = if b % 2 == 0 then 0 else 1
+  return a_value - b_value
+}
+
+show sort([10, 9, 35, 4, 50], increasing)
+show sort([10, 9, 35, 4, 50], decreasing)
+show sort([10, 9, 35, 4, 50], evens_then_odds)
