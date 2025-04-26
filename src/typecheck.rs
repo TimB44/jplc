@@ -18,6 +18,8 @@ pub enum TypeVal {
     // Id of struct
     Struct(usize),
     Void,
+
+    FnPointer(Box<[TypeVal]>, Box<TypeVal>),
 }
 
 impl TypeVal {
@@ -35,6 +37,17 @@ impl TypeVal {
             }
             TypeVal::Struct(id) => env.struct_info()[*id].name().to_string(),
             TypeVal::Void => "void".to_string(),
+            TypeVal::FnPointer(arg_types, ret_type) => {
+                format!(
+                    "fn({}) -> {}",
+                    arg_types
+                        .iter()
+                        .map(|t| t.as_str(env))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    ret_type.as_str(env)
+                )
+            }
         }
     }
 
@@ -73,6 +86,14 @@ impl SExpr for TypeVal {
             }
             TypeVal::Struct(id) => write!(f, " (StructType {})", env.get_struct_id(*id).name()),
             TypeVal::Void => write!(f, " (VoidType)"),
+            TypeVal::FnPointer(arg_types, ret_type) => {
+                write!(
+                    f,
+                    "(FunctionPointerType ({}) {})",
+                    Displayable(arg_types, env, opt),
+                    Displayable(ret_type.as_ref(), env, opt),
+                )
+            }
         }
     }
 }
@@ -87,16 +108,19 @@ impl TypeVal {
                 TypeVal::Array(Box::new(Self::from_ast_type(inner, env)?), *rank)
             }
             types::TypeKind::Struct => {
-                let id = env
-                    .get_struct({
-                        let this = &t;
-                        this.loc
-                    })?
-                    .id();
+                let id = env.get_struct(t.loc())?.id();
 
                 TypeVal::Struct(id)
             }
             types::TypeKind::Void => TypeVal::Void,
+            types::TypeKind::FnPointer(items, ret_type) => TypeVal::FnPointer(
+                items
+                    .iter()
+                    .map(|arg| TypeVal::from_ast_type(arg, env))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_boxed_slice(),
+                Box::new(TypeVal::from_ast_type(ret_type, env)?),
+            ),
         })
     }
 
@@ -133,6 +157,13 @@ impl TypeVal {
             TypeVal::Void => {
                 s.push_str("(VoidType)");
             }
+            TypeVal::FnPointer(arg_types, ret_type) => write!(
+                s,
+                "(FunctionPointerType ({}) {})",
+                Displayable(arg_types, env, SExprOptions::Untyped),
+                Displayable(ret_type.as_ref(), env, SExprOptions::Untyped),
+            )
+            .unwrap(),
         }
     }
 
@@ -165,6 +196,11 @@ impl TypeVal {
             TypeVal::Bool => Cow::Borrowed("(BoolType)"),
             TypeVal::Float => Cow::Borrowed("(FloatType)"),
             TypeVal::Void => Cow::Borrowed("(VoidType)"),
+            TypeVal::FnPointer(arg_types, ret_type) => Cow::Owned(format!(
+                "(FunctionPointerType ({}) {})",
+                Displayable(arg_types, env, SExprOptions::Untyped),
+                Displayable(ret_type.as_ref(), env, SExprOptions::Untyped),
+            )),
         }
     }
 }
