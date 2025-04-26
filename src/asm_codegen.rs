@@ -532,20 +532,20 @@ enum Asm<'a> {
 
 #[derive(Clone, Debug)]
 enum Instr<'a> {
-    Mov(Operand, Operand),
+    Mov(Operand<'a>, Operand<'a>),
     Lea(Reg, MemLoc),
     // does not have the leading _
     Call(&'a str),
-    Push(Operand),
+    Push(Operand<'a>),
     Pop(Reg),
-    Add(Operand, Operand),
-    Sub(Operand, Operand),
+    Add(Operand<'a>, Operand<'a>),
+    Sub(Operand<'a>, Operand<'a>),
     Ret,
     Neg(Reg),
-    Xor(Operand, Operand),
-    And(Operand, Operand),
-    Mul(Operand, Operand),
-    Div(Operand, Operand),
+    Xor(Operand<'a>, Operand<'a>),
+    And(Operand<'a>, Operand<'a>),
+    Mul(Operand<'a>, Operand<'a>),
+    Div(Operand<'a>, Operand<'a>),
     // Always set register al
     Setl,
     Setg,
@@ -560,7 +560,7 @@ enum Instr<'a> {
     Cmpeq(Reg, Reg),
     Cmpneq(Reg, Reg),
 
-    Cmp(Operand, Operand),
+    Cmp(Operand<'a>, Operand<'a>),
     Jmp(u64),
     Jne(u64),
     Je(u64),
@@ -568,33 +568,30 @@ enum Instr<'a> {
     Jge(u64),
     Jno(u64),
     Jg(u64),
-    Shl(Operand, u8),
+    Shl(Operand<'a>, u8),
     Cqo,
 }
 
 #[derive(Clone, Debug)]
-enum Operand {
+enum Operand<'a> {
     Reg(Reg),
     Mem(MemLoc),
     Value(u64),
+    // Only used for fn pointers
+    Label(&'a str),
 }
 
-impl Operand {
+impl Operand<'_> {
     fn kind(&self) -> Option<RegKind> {
         match self {
             Operand::Reg(reg) => Some(reg.kind()),
             Operand::Mem(_) => None,
-            Operand::Value(_) => Some(RegKind::Int),
+            Operand::Label(_) | Operand::Value(_) => Some(RegKind::Int),
         }
     }
 
     fn args_kind(&self, rhs: &Self) -> RegKind {
         match (self, rhs) {
-            (Operand::Mem(_), Operand::Mem(_))
-            | (Operand::Value(_), Operand::Reg(_))
-            | (Operand::Value(_), Operand::Mem(_))
-            | (Operand::Value(_), Operand::Value(_)) => unreachable!(),
-
             (Operand::Reg(lhs), Operand::Reg(rhs)) => {
                 let kind = lhs.kind();
                 assert_eq!(kind, rhs.kind());
@@ -604,6 +601,8 @@ impl Operand {
             (_, Operand::Reg(reg)) => reg.kind(),
 
             (Operand::Mem(_), Operand::Value(_)) => RegKind::Int,
+
+            _ => unreachable!(),
         }
     }
 }

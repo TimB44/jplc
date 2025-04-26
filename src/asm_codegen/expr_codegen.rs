@@ -24,7 +24,7 @@ pub const FALSE_VALUE: u64 = 0;
 
 use super::{Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
-impl AsmEnv<'_> {
+impl<'a> AsmEnv<'a> {
     pub fn gen_asm_expr(&mut self, expr: &Expr) {
         if self.gen_asm_expr_opt(expr) {
             return;
@@ -55,6 +55,12 @@ impl AsmEnv<'_> {
                 self.load_const(const_id);
             }
             ExprKind::Var => {
+                if matches!(expr.type_data(), TypeVal::FnPointer(_, _)) {
+                    let fn_name = expr.loc().as_str(self.env.src());
+                    self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Label(fn_name))]);
+                    return;
+                }
+
                 let var_info = self
                     .env
                     .get_variable_info(expr.loc(), self.cur_scope)
@@ -475,7 +481,7 @@ impl AsmEnv<'_> {
     fn arithmetic_binop(
         &mut self,
         args: &[Expr; 2],
-        instr: fn(Operand, Operand) -> Instr<'static>,
+        instr: fn(Operand<'a>, Operand<'a>) -> Instr<'a>,
     ) {
         let [lhs, rhs] = args;
         self.gen_asm_expr(rhs);

@@ -173,12 +173,13 @@ impl Display for Instr<'_> {
     }
 }
 
-impl Display for Operand {
+impl Display for Operand<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Operand::Reg(reg) => write!(f, "{}", reg),
             Operand::Mem(mem_loc) => write!(f, "{}", mem_loc),
             Operand::Value(v) => write!(f, "{}", v),
+            Operand::Label(label) => write!(f, "{}", label),
         }
     }
 }
