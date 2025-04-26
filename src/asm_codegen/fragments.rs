@@ -45,13 +45,3 @@ pub const PROLOGE: [Asm; 2] = [
 ];
 
 pub const EPILOGUE: [Asm; 2] = [Asm::Instr(Instr::Pop(Reg::Rbp)), Asm::Instr(Instr::Ret)];
-
-pub fn load_const(const_id: u64) -> [Instr<'static>; 2] {
-    [
-        Instr::Mov(
-            Operand::Reg(Reg::Rax),
-            Operand::Mem(MemLoc::Const(const_id)),
-        ),
-        Instr::Push(Operand::Reg(Reg::Rax)),
-    ]
-}

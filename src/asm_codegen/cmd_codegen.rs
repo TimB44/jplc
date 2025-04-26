@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 
 use crate::{
-    asm_codegen::{fragments::EPILOGUE, FN_STARTING_STACK_SIZE, WORD_SIZE},
+    asm_codegen::{
+        expr_codegen::VOID_VALUE, fragments::EPILOGUE, FN_STARTING_STACK_SIZE, WORD_SIZE,
+    },
     ast::{
         cmd::{Cmd, CmdKind},
         stmt::StmtType,
@@ -84,15 +86,6 @@ impl AsmEnv<'_> {
                 self.remove_stack_alignment(stack_aligned);
             }
             CmdKind::Time(cmd) => {
-                //sub rsp, 8
-                //	movsd [rsp], xmm0
-                //	movsd xmm0, [rsp]
-                //	add rsp, 8
-                //	movsd xmm1, [rsp + 8]
-                //	subsd xmm0, xmm1
-                //	sub rsp, 8 ; Add alignment
-                //	call _print_time
-                //	add rsp, 8 ; Remove alignment
                 let stack_aligned = self.align_stack(0);
                 self.add_instrs([Instr::Call("get_time")]);
                 self.remove_stack_alignment(stack_aligned);
@@ -155,7 +148,7 @@ impl AsmEnv<'_> {
                     .zip(params.into_iter().map(|b| b.lvalue()))
                 {
                     match arg {
-                        TypeVal::Int | TypeVal::Bool if !int_regs.is_empty() => {
+                        TypeVal::Int | TypeVal::Bool | TypeVal::Void if !int_regs.is_empty() => {
                             let reg = int_regs[0];
                             int_regs = &int_regs[1..];
                             self.add_instrs([Instr::Push(Operand::Reg(reg))]);
@@ -185,13 +178,14 @@ impl AsmEnv<'_> {
                     let local_vars_size =
                         self.fns[self.cur_fn].cur_stack_size - FN_STARTING_STACK_SIZE;
                     assert!(local_vars_size % WORD_SIZE == 0);
-                    //TODO: add if here
-                    if local_vars_size > 0 {
-                        self.add_instrs([Instr::Add(
-                            Operand::Reg(Reg::Rsp),
-                            Operand::Value(local_vars_size),
-                        )]);
-                    }
+
+                    let const_id = self.add_const(&ConstKind::Int(VOID_VALUE));
+                    self.load_const(const_id);
+                    self.add_instrs([Instr::Pop(Reg::Rax)]);
+                    self.add_instrs([Instr::Add(
+                        Operand::Reg(Reg::Rsp),
+                        Operand::Value(local_vars_size),
+                    )]);
 
                     self.add_asm(EPILOGUE);
                 }

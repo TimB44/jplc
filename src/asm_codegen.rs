@@ -103,6 +103,16 @@ impl<'a> AsmEnv<'a> {
         next_id
     }
 
+    fn load_const(&mut self, const_id: u64) {
+        self.add_instrs([
+            Instr::Mov(
+                Operand::Reg(Reg::Rax),
+                Operand::Mem(MemLoc::Const(const_id)),
+            ),
+            Instr::Push(Operand::Reg(Reg::Rax)),
+        ]);
+    }
+
     fn add_asm(&mut self, instrs: impl IntoIterator<Item = Asm<'a>>) {
         let cur_fn = &mut self.fns[self.cur_fn];
         cur_fn.text.extend(instrs.into_iter().inspect(|a| {
@@ -195,7 +205,7 @@ impl<'a> AsmEnv<'a> {
         let num_int_args = args
             .iter()
             .map(|e| e.type_data())
-            .filter(|t| matches!(t, TypeVal::Int | TypeVal::Bool))
+            .filter(|t| matches!(t, TypeVal::Int | TypeVal::Bool | TypeVal::Void))
             .count();
 
         let num_float_args = args
@@ -211,8 +221,8 @@ impl<'a> AsmEnv<'a> {
             .iter()
             .rev()
             .filter(|e| match e.type_data() {
-                TypeVal::Array(_, _) | TypeVal::Struct(_) | TypeVal::Void => true,
-                TypeVal::Int | TypeVal::Bool => {
+                TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
+                TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
                     cur_int_arg -= 1;
                     cur_int_arg >= avaliable_int_args
                 }
@@ -229,8 +239,8 @@ impl<'a> AsmEnv<'a> {
         let mut cur_int_arg = num_int_args;
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
-            TypeVal::Array(_, _) | TypeVal::Struct(_) | TypeVal::Void => true,
-            TypeVal::Int | TypeVal::Bool => {
+            TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
+            TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
                 cur_int_arg -= 1;
                 cur_int_arg >= avaliable_int_args
             }
@@ -245,8 +255,8 @@ impl<'a> AsmEnv<'a> {
         let mut cur_int_arg = num_int_args;
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
-            TypeVal::Array(_, _) | TypeVal::Struct(_) | TypeVal::Void => false,
-            TypeVal::Int | TypeVal::Bool => {
+            TypeVal::Array(_, _) | TypeVal::Struct(_) => false,
+            TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
                 cur_int_arg -= 1;
                 cur_int_arg < avaliable_int_args
             }
@@ -262,7 +272,9 @@ impl<'a> AsmEnv<'a> {
         let mut cur_float_arg = 0;
         for arg in args {
             match arg.type_data() {
-                TypeVal::Int | TypeVal::Bool if cur_int_arg < avaliable_int_args => {
+                TypeVal::Int | TypeVal::Bool | TypeVal::Void
+                    if cur_int_arg < avaliable_int_args =>
+                {
                     self.add_instrs([Instr::Pop(INT_REGS_FOR_ARGS[cur_int_arg])]);
                     cur_int_arg += 1;
                 }
@@ -290,8 +302,8 @@ impl<'a> AsmEnv<'a> {
             self.add_instrs(
                 args.iter()
                     .filter(|e| match e.type_data() {
-                        TypeVal::Array(_, _) | TypeVal::Struct(_) | TypeVal::Void => true,
-                        TypeVal::Int | TypeVal::Bool => {
+                        TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
+                        TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
                             cur_int_arg += 1;
                             cur_int_arg >= avaliable_int_args
                         }

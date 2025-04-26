@@ -8,7 +8,6 @@ use crate::{
     },
     cli::OptLevel,
     typecheck::TypeVal,
-    utils::Span,
 };
 
 mod loop_opt;
@@ -19,11 +18,11 @@ const NEGATIVE_ARRAY_INDEX_ERR_MSG: &str = "negative array index";
 const INDEX_TOO_LARGE_ERR_MSG: &str = "index too large";
 const NEGATIVE_LOOP_BOUND_ERR_MSG: &str = "non-positive loop bound";
 const OVERFLOW_ARRAY_ERR_MSG: &str = "overflow computing array size";
-const VOID_VALUE: u64 = 1;
-const TRUE_VALUE: u64 = 1;
-const FALSE_VALUE: u64 = 0;
+pub const VOID_VALUE: u64 = 1;
+pub const TRUE_VALUE: u64 = 1;
+pub const FALSE_VALUE: u64 = 0;
 
-use super::{fragments::load_const, Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
+use super::{Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
 impl AsmEnv<'_> {
     pub fn gen_asm_expr(&mut self, expr: &Expr) {
@@ -34,22 +33,26 @@ impl AsmEnv<'_> {
             ExprKind::IntLit(val) => {
                 let const_id = self.add_const(&ConstKind::Int(*val));
 
-                self.add_instrs(load_const(const_id));
+                self.load_const(const_id);
             }
             ExprKind::FloatLit(val) => {
                 let const_id = self.add_const(&ConstKind::Float(val.to_bits()));
 
-                self.add_instrs(load_const(const_id));
+                self.load_const(const_id);
             }
             ExprKind::True => {
                 let const_id = self.add_const(&ConstKind::Int(TRUE_VALUE));
 
-                self.add_instrs(load_const(const_id));
+                self.load_const(const_id);
             }
             ExprKind::False => {
                 let const_id = self.add_const(&ConstKind::Int(FALSE_VALUE));
 
-                self.add_instrs(load_const(const_id));
+                self.load_const(const_id);
+            }
+            ExprKind::Void => {
+                let const_id = self.add_const(&ConstKind::Int(VOID_VALUE));
+                self.load_const(const_id);
             }
             ExprKind::Var => {
                 let var_info = self
@@ -92,10 +95,6 @@ impl AsmEnv<'_> {
                             }),
                     ),
                 );
-            }
-            ExprKind::Void => {
-                let const_id = self.add_const(&ConstKind::Int(VOID_VALUE));
-                self.add_instrs(load_const(const_id));
             }
             ExprKind::Paren(expr) => self.gen_asm_expr(expr.as_ref()),
             ExprKind::ArrayLit(exprs) => {
