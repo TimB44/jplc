@@ -240,8 +240,8 @@ impl Cmd {
                             "return type: {} defined here",
                             ret_type.as_str(env)
                         )),
-                        return_type.location().start(),
-                        return_type.location().len(),
+                        return_type.loc().start(),
+                        return_type.loc().len(),
                     ),
                     LabeledSpan::new(
                         Some("return statment expected here".to_string()),

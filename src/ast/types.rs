@@ -5,7 +5,7 @@ use super::{next_match, Parse, TokenStream};
 use crate::{
     environment::Environment,
     lex::TokenType,
-    parse::{expect_tokens, Displayable, SExpr},
+    parse::{expect_tokens, parse_sequence, Displayable, SExpr},
     utils::Span,
 };
 use miette::{miette, LabeledSpan, Severity};
@@ -24,7 +24,7 @@ use miette::{miette, LabeledSpan, Severity};
 #[derive(Debug, Clone)]
 pub struct Type {
     kind: TypeKind,
-    location: Span,
+    loc: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -37,16 +37,19 @@ pub enum TypeKind {
     // name of struct infered from location
     Struct,
     Void,
+
+    FnPointer(Box<[Type]>, Box<Type>),
 }
 
 impl Parse for Type {
-    fn parse(ts: &mut TokenStream, _: &mut Environment) -> miette::Result<Self> {
+    fn parse(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let mut current_type = match ts.peek_type() {
             Some(TokenType::Int) => Self::parse_int(ts)?,
             Some(TokenType::Bool) => Self::parse_bool(ts)?,
             Some(TokenType::Float) => Self::parse_float(ts)?,
             Some(TokenType::Variable) => Self::parse_struct(ts)?,
             Some(TokenType::Void) => Self::parse_void(ts)?,
+            Some(TokenType::Fn) => Self::parse_fn(ts, env)?,
 
             Some(t) => {
                 return Err(miette!(
@@ -80,10 +83,10 @@ impl Parse for Type {
                 _ = expect_tokens(ts, [TokenType::Comma])?;
             }
             let [r_square] = expect_tokens(ts, [TokenType::RSquare])?;
-            let location = r_square.loc().join(current_type.location);
+            let location = r_square.loc().join(current_type.loc);
             current_type = Self {
                 kind: TypeKind::Array(Box::new(current_type), rank),
-                location,
+                loc: location,
             }
         }
 
@@ -94,21 +97,21 @@ impl Type {
     fn parse_int(ts: &mut TokenStream) -> miette::Result<Self> {
         let [int_token] = expect_tokens(ts, [TokenType::Int])?;
         Ok(Self {
-            location: int_token.loc(),
+            loc: int_token.loc(),
             kind: TypeKind::Int,
         })
     }
     fn parse_bool(ts: &mut TokenStream) -> miette::Result<Self> {
         let [bool_token] = expect_tokens(ts, [TokenType::Bool])?;
         Ok(Self {
-            location: bool_token.loc(),
+            loc: bool_token.loc(),
             kind: TypeKind::Bool,
         })
     }
     fn parse_float(ts: &mut TokenStream) -> miette::Result<Self> {
         let [float_token] = expect_tokens(ts, [TokenType::Float])?;
         Ok(Self {
-            location: float_token.loc(),
+            loc: float_token.loc(),
             kind: TypeKind::Float,
         })
     }
@@ -116,20 +119,41 @@ impl Type {
     fn parse_struct(ts: &mut TokenStream) -> miette::Result<Self> {
         let [var_token] = expect_tokens(ts, [TokenType::Variable])?;
         Ok(Self {
-            location: var_token.loc(),
+            loc: var_token.loc(),
             kind: TypeKind::Struct,
         })
     }
     fn parse_void(ts: &mut TokenStream) -> miette::Result<Self> {
         let [void_token] = expect_tokens(ts, [TokenType::Void])?;
         Ok(Self {
-            location: void_token.loc(),
+            loc: void_token.loc(),
             kind: TypeKind::Void,
         })
     }
 
-    pub fn location(&self) -> Span {
-        self.location
+    fn parse_fn(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
+        let [fn_token, _] = expect_tokens(ts, [TokenType::Fn, TokenType::LParen])?;
+        let args = parse_sequence(ts, env, TokenType::Comma, TokenType::RParen)?;
+        let [closing_paren] = expect_tokens(ts, [TokenType::RParen])?;
+        let ret_type = if ts.peek_type() == Some(TokenType::Arrow) {
+            expect_tokens(ts, [TokenType::Arrow]);
+            Type::parse(ts, env)?
+        } else {
+            Type {
+                kind: TypeKind::Void,
+                loc: closing_paren.loc(),
+            }
+        };
+        let loc = fn_token.loc().join(ret_type.loc());
+
+        Ok(Type {
+            kind: TypeKind::FnPointer(args, Box::new(ret_type)),
+            loc,
+        })
+    }
+
+    pub fn loc(&self) -> Span {
+        self.loc
     }
 
     pub fn kind(&self) -> &TypeKind {
@@ -148,7 +172,7 @@ impl SExpr for Type {
             TypeKind::Int => write!(f, "(IntType)"),
             TypeKind::Bool => write!(f, "(BoolType)"),
             TypeKind::Float => write!(f, "(FloatType)"),
-            TypeKind::Struct => write!(f, "(StructType {})", self.location.as_str(env.src())),
+            TypeKind::Struct => write!(f, "(StructType {})", self.loc.as_str(env.src())),
             TypeKind::Void => write!(f, "(VoidType)"),
             TypeKind::Array(element_type, rank) => {
                 write!(
@@ -156,6 +180,14 @@ impl SExpr for Type {
                     "(ArrayType {} {})",
                     Displayable(element_type.as_ref(), env, opt),
                     rank
+                )
+            }
+            TypeKind::FnPointer(items, ret_type) => {
+                write!(
+                    f,
+                    "(FunctionPointerType ({}) {})",
+                    Displayable(items, env, opt),
+                    Displayable(ret_type.as_ref(), env, opt),
                 )
             }
         }

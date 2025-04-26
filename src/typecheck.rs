@@ -87,7 +87,12 @@ impl TypeVal {
                 TypeVal::Array(Box::new(Self::from_ast_type(inner, env)?), *rank)
             }
             types::TypeKind::Struct => {
-                let id = env.get_struct(t.location())?.id();
+                let id = env
+                    .get_struct({
+                        let this = &t;
+                        this.loc
+                    })?
+                    .id();
 
                 TypeVal::Struct(id)
             }
