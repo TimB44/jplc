@@ -59,10 +59,7 @@ impl<'a> AsmEnv<'a> {
                 if matches!(self.env.get_function(expr.loc()), Ok(_)) {
                     let fn_name = expr.loc().as_str(self.env.src());
                     self.add_instrs([
-                        Instr::Mov(
-                            Operand::Reg(Reg::Rax),
-                            Operand::Mem(MemLoc::FnLabel(fn_name)),
-                        ),
+                        Instr::Lea(Reg::Rax, MemLoc::FnLabel(fn_name)),
                         Instr::Push(Operand::Reg(Reg::Rax)),
                     ]);
                     return;

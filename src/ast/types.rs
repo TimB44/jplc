@@ -136,7 +136,7 @@ impl Type {
         let args = parse_sequence(ts, env, TokenType::Comma, TokenType::RParen)?;
         let [closing_paren] = expect_tokens(ts, [TokenType::RParen])?;
         let ret_type = if ts.peek_type() == Some(TokenType::Arrow) {
-            expect_tokens(ts, [TokenType::Arrow]);
+            expect_tokens(ts, [TokenType::Arrow])?;
             Type::parse(ts, env)?
         } else {
             Type {
