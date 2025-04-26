@@ -191,7 +191,11 @@ impl<'a> AsmEnv<'a> {
     fn call_fn(&mut self, name: &'a str, args: &[Expr], ret_type: &TypeVal) {
         let avaliable_int_args = INT_REGS_FOR_ARGS.len() - {
             match ret_type {
-                TypeVal::Int | TypeVal::Bool | TypeVal::Float | TypeVal::Void => 0,
+                TypeVal::Int
+                | TypeVal::Bool
+                | TypeVal::Float
+                | TypeVal::Void
+                | TypeVal::FnPointer(_, _) => 0,
                 TypeVal::Array(_, _) | TypeVal::Struct(_) => {
                     self.add_instrs([Instr::Sub(
                         Operand::Reg(Reg::Rsp),
@@ -222,7 +226,7 @@ impl<'a> AsmEnv<'a> {
             .rev()
             .filter(|e| match e.type_data() {
                 TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
-                TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+                TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                     cur_int_arg -= 1;
                     cur_int_arg >= avaliable_int_args
                 }
@@ -240,7 +244,7 @@ impl<'a> AsmEnv<'a> {
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
             TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
-            TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+            TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                 cur_int_arg -= 1;
                 cur_int_arg >= avaliable_int_args
             }
@@ -256,7 +260,7 @@ impl<'a> AsmEnv<'a> {
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
             TypeVal::Array(_, _) | TypeVal::Struct(_) => false,
-            TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+            TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                 cur_int_arg -= 1;
                 cur_int_arg < avaliable_int_args
             }
@@ -272,7 +276,7 @@ impl<'a> AsmEnv<'a> {
         let mut cur_float_arg = 0;
         for arg in args {
             match arg.type_data() {
-                TypeVal::Int | TypeVal::Bool | TypeVal::Void
+                TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _)
                     if cur_int_arg < avaliable_int_args =>
                 {
                     self.add_instrs([Instr::Pop(INT_REGS_FOR_ARGS[cur_int_arg])]);
@@ -303,7 +307,7 @@ impl<'a> AsmEnv<'a> {
                 args.iter()
                     .filter(|e| match e.type_data() {
                         TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
-                        TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+                        TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                             cur_int_arg += 1;
                             cur_int_arg >= avaliable_int_args
                         }
@@ -323,7 +327,7 @@ impl<'a> AsmEnv<'a> {
 
         self.remove_stack_alignment(stack_aligned);
         match ret_type {
-            TypeVal::Int | TypeVal::Void | TypeVal::Bool => {
+            TypeVal::Int | TypeVal::Void | TypeVal::Bool | TypeVal::FnPointer(_, _) => {
                 self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))])
             }
             TypeVal::Float => self.add_instrs([Instr::Push(Operand::Reg(Reg::Xmm0))]),

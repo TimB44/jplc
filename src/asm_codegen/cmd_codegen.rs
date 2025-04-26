@@ -148,7 +148,9 @@ impl AsmEnv<'_> {
                     .zip(params.into_iter().map(|b| b.lvalue()))
                 {
                     match arg {
-                        TypeVal::Int | TypeVal::Bool | TypeVal::Void if !int_regs.is_empty() => {
+                        TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _)
+                            if !int_regs.is_empty() =>
+                        {
                             let reg = int_regs[0];
                             int_regs = &int_regs[1..];
                             self.add_instrs([Instr::Push(Operand::Reg(reg))]);
