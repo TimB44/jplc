@@ -34,7 +34,7 @@ impl AsmEnv<'_> {
                 let stack_was_aligned = self.align_stack(0);
                 self.add_instrs([
                     Instr::Lea(Reg::Rsi, MemLoc::Const(filename_id)),
-                    Instr::Call("read_image"),
+                    Instr::Call(Operand::Label("read_image")),
                 ]);
                 self.remove_stack_alignment(stack_was_aligned);
                 self.add_lvalue(lvalue, self.fns[self.cur_fn].cur_stack_size as i64);
@@ -46,7 +46,7 @@ impl AsmEnv<'_> {
                 let filename_id = self.add_const(&ConstKind::String(Cow::Borrowed(filename_str)));
                 self.add_instrs([
                     Instr::Lea(Reg::Rdi, MemLoc::Const(filename_id)),
-                    Instr::Call("write_image"),
+                    Instr::Call(Operand::Label("write_image")),
                     Instr::Add(
                         Operand::Reg(Reg::Rsp),
                         Operand::Value(self.env.type_size(&IMAGE_TYPE)),
@@ -65,7 +65,7 @@ impl AsmEnv<'_> {
                 let msg_id = self.add_const(&ConstKind::String(Cow::Borrowed(msg_str)));
                 self.add_instrs([Instr::Lea(Reg::Rdi, MemLoc::Const(msg_id))]);
                 let stack_was_aligned = self.align_stack(0);
-                self.add_instrs([Instr::Call("print")]);
+                self.add_instrs([Instr::Call(Operand::Label("print"))]);
                 self.remove_stack_alignment(stack_was_aligned);
             }
             CmdKind::Show(expr) => {
@@ -79,7 +79,7 @@ impl AsmEnv<'_> {
                 self.add_instrs([
                     Instr::Lea(Reg::Rdi, MemLoc::Const(id)),
                     Instr::Lea(Reg::Rsi, MemLoc::Reg(Reg::Rsp)),
-                    Instr::Call("show"),
+                    Instr::Call(Operand::Label("show")),
                     Instr::Add(Operand::Reg(Reg::Rsp), Operand::Value(type_size)),
                 ]);
 
@@ -87,7 +87,7 @@ impl AsmEnv<'_> {
             }
             CmdKind::Time(cmd) => {
                 let stack_aligned = self.align_stack(0);
-                self.add_instrs([Instr::Call("get_time")]);
+                self.add_instrs([Instr::Call(Operand::Label("get_time"))]);
                 self.remove_stack_alignment(stack_aligned);
                 self.add_instrs([Instr::Push(Operand::Reg(Reg::Xmm0))]);
 
@@ -96,7 +96,7 @@ impl AsmEnv<'_> {
                 let stack_after = self.fns[self.cur_fn].cur_stack_size;
 
                 let stack_aligned = self.align_stack(0);
-                self.add_instrs([Instr::Call("get_time")]);
+                self.add_instrs([Instr::Call(Operand::Label("get_time"))]);
                 self.remove_stack_alignment(stack_aligned);
 
                 self.add_instrs([
@@ -112,7 +112,7 @@ impl AsmEnv<'_> {
                     Instr::Sub(Operand::Reg(Reg::Xmm0), Operand::Reg(Reg::Xmm1)),
                 ]);
                 let stack_aligned = self.align_stack(0);
-                self.add_instrs([Instr::Call("print_time")]);
+                self.add_instrs([Instr::Call(Operand::Label("print_time"))]);
                 self.remove_stack_alignment(stack_aligned);
             }
             CmdKind::Function {

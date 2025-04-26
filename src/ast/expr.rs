@@ -196,6 +196,14 @@ fn parse_binary_op(
 //TODO move to auxiliary
 
 impl Expr {
+    pub fn new(loc: Span, kind: ExprKind, type_data: TypeVal) -> Self {
+        Self {
+            loc,
+            kind,
+            type_data,
+        }
+    }
+
     pub fn loc(&self) -> Span {
         self.loc
     }

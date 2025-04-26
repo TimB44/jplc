@@ -188,7 +188,11 @@ impl<'a> AsmEnv<'a> {
         jmp
     }
 
-    fn call_fn(&mut self, name: &'a str, args: &[Expr], ret_type: &TypeVal) {
+    fn call_fn(&mut self, name: Option<&'a str>, args: &[Expr], ret_type: &TypeVal) {
+        if let None = name {
+            self.add_instrs([Instr::Pop(Reg::Rax)])
+        }
+
         let avaliable_int_args = INT_REGS_FOR_ARGS.len() - {
             match ret_type {
                 TypeVal::Int
@@ -299,7 +303,10 @@ impl<'a> AsmEnv<'a> {
             )]);
         }
 
-        self.add_instrs([Instr::Call(name)]);
+        self.add_instrs([Instr::Call(
+            name.map(|s| Operand::Label(s))
+                .unwrap_or(Operand::Reg(Reg::Rax)),
+        )]);
         if stack_space_for_args > 0 {
             let mut cur_int_arg = 0;
             let mut cur_float_arg = 0;
@@ -363,7 +370,7 @@ impl<'a> AsmEnv<'a> {
         let stack_was_aligned = self.align_stack(0);
         self.add_instrs([
             Instr::Lea(Reg::Rdi, MemLoc::Const(msg)),
-            Instr::Call("fail_assertion"),
+            Instr::Call(Operand::Label("fail_assertion")),
         ]);
         self.remove_stack_alignment(stack_was_aligned);
     }
@@ -535,7 +542,7 @@ enum Instr<'a> {
     Mov(Operand<'a>, Operand<'a>),
     Lea(Reg, MemLoc),
     // does not have the leading _
-    Call(&'a str),
+    Call(Operand<'a>),
     Push(Operand<'a>),
     Pop(Reg),
     Add(Operand<'a>, Operand<'a>),

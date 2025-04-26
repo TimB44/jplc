@@ -55,7 +55,8 @@ impl<'a> AsmEnv<'a> {
                 self.load_const(const_id);
             }
             ExprKind::Var => {
-                if matches!(expr.type_data(), TypeVal::FnPointer(_, _)) {
+                // Check for functions
+                if matches!(self.env.get_function(expr.loc()), Ok(_)) {
                     let fn_name = expr.loc().as_str(self.env.src());
                     self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rax), Operand::Label(fn_name))]);
                     return;
@@ -113,7 +114,7 @@ impl<'a> AsmEnv<'a> {
                 self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rdi), Operand::Value(arr_size))]);
 
                 let stack_aligend = self.align_stack(0);
-                self.add_instrs([Instr::Call("jpl_alloc")]);
+                self.add_instrs([Instr::Call(Operand::Label("jpl_alloc"))]);
                 self.remove_stack_alignment(stack_aligend);
                 self.copy(arr_size, Reg::Rsp, 0, Reg::Rax, 0);
                 self.add_instrs([
@@ -129,12 +130,19 @@ impl<'a> AsmEnv<'a> {
                 }
             }
             ExprKind::FunctionCall(name, args) => {
-                let fn_info = self
+                let fn_name = match &self
                     .env
-                    .get_function(*name)
-                    .expect("function should exist after typechecking");
+                    .get_variable_info(*name, self.cur_scope)
+                    .map(|fn_info| fn_info.var_type())
+                {
+                    Ok(var_type @ TypeVal::FnPointer(_, _)) => {
+                        self.gen_asm_expr(&Expr::new(*name, ExprKind::Var, (*var_type).clone()));
+                        None
+                    }
+                    _ => Some(name.as_str(self.env.src())),
+                };
 
-                self.call_fn(fn_info.name(), args, fn_info.ret());
+                self.call_fn(fn_name, args, expr.type_data());
             }
             ExprKind::FieldAccess(struct_expr, field_name) => {
                 self.gen_asm_expr(struct_expr);
@@ -349,7 +357,7 @@ impl<'a> AsmEnv<'a> {
                     self.gen_div_mod(args, false);
                 }
                 TypeVal::Float => {
-                    self.call_fn("fmod", args.as_ref(), &TypeVal::Float);
+                    self.call_fn(Some("fmod"), args.as_ref(), &TypeVal::Float);
                 }
                 _ => unreachable!(),
             },
@@ -664,7 +672,7 @@ impl<'a> AsmEnv<'a> {
             self.add_asm([Asm::JumpLabel(ok_jmp)])
         }
         let stack_was_aligned = self.align_stack(0);
-        self.add_instrs([Instr::Call("jpl_alloc")]);
+        self.add_instrs([Instr::Call(Operand::Label("jpl_alloc"))]);
         self.remove_stack_alignment(stack_was_aligned);
     }
 
