@@ -655,7 +655,18 @@ impl Expr {
 
     fn parse_var(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [var_token] = expect_tokens(ts, [TokenType::Variable])?;
-        let var_type = env.get_variable_type(var_token.loc())?;
+        let var_type = env
+            .get_variable_type(var_token.loc())
+            .map(|t| t.clone())
+            .or_else(|_| {
+                env.get_function(var_token.loc()).map(|fn_info| {
+                    TypeVal::FnPointer(
+                        fn_info.args().to_vec().into_boxed_slice(),
+                        Box::new(fn_info.ret().clone()),
+                    )
+                })
+            })?;
+
         Ok(Self {
             loc: var_token.loc(),
             kind: ExprKind::Var,
@@ -738,14 +749,21 @@ impl Expr {
         let [r_curly_token] = expect_tokens(ts, [TokenType::RParen])?;
         let loc = fn_name.loc().join(r_curly_token.loc());
 
-        let fn_info = env.get_function(fn_name.loc())?;
-        if args.len() != fn_info.args().len() {
+        // Check for function or variables with a matching name
+        let (expected_args, expected_ret) = env
+            .get_function(fn_name.loc())
+            .map(|fn_info| (fn_info.args(), fn_info.ret()))
+            .or_else(|err| match env.get_variable_type(fn_name.loc()) {
+                Ok(TypeVal::FnPointer(args, ret)) => Ok((args.as_ref(), ret.as_ref())),
+                _ => Err(err),
+            })?;
+        if args.len() != expected_args.len() {
             return Err(miette!(
                 severity = Severity::Error,
                 labels = vec![LabeledSpan::new(
                     Some(format!(
                         "Expected {} arguments, found {}",
-                        fn_info.args().len(),
+                        expected_args.len(),
                         args.len(),
                     )),
                     loc.start(),
@@ -756,14 +774,14 @@ impl Expr {
             ));
         }
 
-        for (arg, expected_type) in args.iter().zip(fn_info.args()) {
+        for (arg, expected_type) in args.iter().zip(expected_args) {
             arg.expect_type(expected_type, env)?;
         }
 
         Ok(Expr {
             loc,
             kind: ExprKind::FunctionCall(fn_name.loc(), args),
-            type_data: fn_info.ret().clone(),
+            type_data: expected_ret.clone(),
         })
     }
 

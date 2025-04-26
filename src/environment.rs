@@ -371,17 +371,9 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn get_variable_type(&self, var: Span) -> miette::Result<TypeVal> {
+    pub fn get_variable_type(&self, var: Span) -> miette::Result<&TypeVal> {
         self.get_variable_info(var, self.cur_scope)
-            .map(|var_info| var_info.var_type().clone())
-            .or_else(|_| {
-                self.get_function(var).map(|fn_info| {
-                    TypeVal::FnPointer(
-                        fn_info.args().to_vec().into_boxed_slice(),
-                        Box::new(fn_info.ret().clone()),
-                    )
-                })
-            })
+            .map(|var_info| var_info.var_type())
     }
 
     pub fn functions(&self) -> &HashMap<&'a str, FunctionInfo<'a>> {
