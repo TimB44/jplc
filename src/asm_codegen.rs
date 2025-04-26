@@ -213,7 +213,12 @@ impl<'a> AsmEnv<'a> {
         let num_int_args = args
             .iter()
             .map(|e| e.type_data())
-            .filter(|t| matches!(t, TypeVal::Int | TypeVal::Bool | TypeVal::Void))
+            .filter(|t| {
+                matches!(
+                    t,
+                    TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _)
+                )
+            })
             .count();
 
         let num_float_args = args
@@ -540,7 +545,7 @@ enum Asm<'a> {
 #[derive(Clone, Debug)]
 enum Instr<'a> {
     Mov(Operand<'a>, Operand<'a>),
-    Lea(Reg, MemLoc),
+    Lea(Reg, MemLoc<'a>),
     // does not have the leading _
     Call(Operand<'a>),
     Push(Operand<'a>),
@@ -582,9 +587,8 @@ enum Instr<'a> {
 #[derive(Clone, Debug)]
 enum Operand<'a> {
     Reg(Reg),
-    Mem(MemLoc),
+    Mem(MemLoc<'a>),
     Value(u64),
-    // Only used for fn pointers
     Label(&'a str),
 }
 
@@ -671,12 +675,13 @@ impl Reg {
 }
 
 #[derive(Clone, Debug)]
-enum MemLoc {
+enum MemLoc<'a> {
     GlobalOffset(i64, u64),
     LocalOffset(i64, u64),
     Const(u64),
     Reg(Reg),
     RegOffset(Reg, i64),
+    FnLabel(&'a str),
 }
 
 #[derive(Clone, Debug)]
