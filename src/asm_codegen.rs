@@ -306,7 +306,9 @@ impl<'a> AsmEnv<'a> {
 
         // Load value for retval if needed
         if matches!(ret_type, TypeVal::Array(_, _) | TypeVal::Struct(_)) {
-            let offset = stack_space_for_args + if stack_aligned { WORD_SIZE } else { 0 };
+            let offset = stack_space_for_args
+                + if stack_aligned { WORD_SIZE } else { 0 }
+                + if let None = name { WORD_SIZE } else { 0 };
             self.add_instrs([Instr::Lea(
                 INT_REGS_FOR_ARGS[0],
                 MemLoc::RegOffset(Reg::Rsp, offset as i64),
