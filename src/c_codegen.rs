@@ -235,6 +235,7 @@ fn write_type(s: &mut String, t: &TypeVal, env: &Environment) {
         }
         TypeVal::Struct(id) => write!(s, "{}", env.get_struct_id(*id).name()),
         TypeVal::Void => write!(s, "void_t"),
+        TypeVal::FnPointer(_, _) => todo!(),
     }
     .expect("string should not fail to write");
 }

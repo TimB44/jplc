@@ -659,7 +659,7 @@ impl Expr {
         Ok(Self {
             loc: var_token.loc(),
             kind: ExprKind::Var,
-            type_data: var_type.clone(),
+            type_data: var_type,
         })
     }
 

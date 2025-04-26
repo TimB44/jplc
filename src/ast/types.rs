@@ -182,11 +182,11 @@ impl SExpr for Type {
                     rank
                 )
             }
-            TypeKind::FnPointer(items, ret_type) => {
+            TypeKind::FnPointer(arg_types, ret_type) => {
                 write!(
                     f,
                     "(FunctionPointerType ({}) {})",
-                    Displayable(items, env, opt),
+                    Displayable(arg_types, env, opt),
                     Displayable(ret_type.as_ref(), env, opt),
                 )
             }
