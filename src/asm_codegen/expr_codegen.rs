@@ -56,19 +56,19 @@ impl<'a> AsmEnv<'a> {
             }
             ExprKind::Var => {
                 // Check for functions
-                if matches!(self.env.get_function(expr.loc()), Ok(_)) {
-                    let fn_name = expr.loc().as_str(self.env.src());
-                    self.add_instrs([
-                        Instr::Lea(Reg::Rax, MemLoc::FnLabel(fn_name)),
-                        Instr::Push(Operand::Reg(Reg::Rax)),
-                    ]);
-                    return;
-                }
 
-                let var_info = self
-                    .env
-                    .get_variable_info(expr.loc(), self.cur_scope)
-                    .expect("variable should be valid after typechecking");
+                let var_info = match self.env.get_variable_info(expr.loc(), self.cur_scope) {
+                    Ok(var_info) => var_info,
+                    Err(_) => {
+                        assert!(matches!(self.env.get_function(expr.loc()), Ok(_)));
+                        let fn_name = expr.loc().as_str(self.env.src());
+                        self.add_instrs([
+                            Instr::Lea(Reg::Rax, MemLoc::FnLabel(fn_name)),
+                            Instr::Push(Operand::Reg(Reg::Rax)),
+                        ]);
+                        return;
+                    }
+                };
                 let type_size = self.env.type_size(var_info.var_type());
                 let is_local = self.env.is_local_var(expr.loc(), self.cur_scope);
                 // offset are from ebp which is 16 bytes after the start of the stack frame
