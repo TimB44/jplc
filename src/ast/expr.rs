@@ -108,6 +108,7 @@ pub enum ExprKind {
     ArrayLit(Box<[Expr]>),
     StructInit(Span, Box<[Expr]>),
     FunctionCall(Span, Box<[Expr]>),
+    FunctionPtrCall(Box<Expr>, Box<[Expr]>),
 
     // Left recursive, handled specially
     FieldAccess(Box<Expr>, Span),
@@ -470,7 +471,11 @@ impl Expr {
             (Some(TokenType::Variable), Some(TokenType::LCurly)) => {
                 Self::parse_struct_init(ts, env)
             }
-            (Some(TokenType::Variable), Some(TokenType::LParen)) => Self::parse_fn_call(ts, env),
+            (Some(TokenType::Variable), Some(TokenType::LParen))
+                if env.get_function(ts.peek().unwrap().loc()).is_ok() =>
+            {
+                Self::parse_fn_call(ts, env)
+            }
             (Some(TokenType::Variable), _) => Self::parse_var(ts, env),
             (Some(t), _) => Err(miette!(
                 severity = Severity::Error,
@@ -494,7 +499,7 @@ impl Expr {
         Ok(loop {
             match ts.peek_type() {
                 Some(TokenType::Dot) => {
-                    _ = expect_tokens(ts, [TokenType::Dot])?;
+                    expect_tokens(ts, [TokenType::Dot])?;
                     let [field_name] = expect_tokens(ts, [TokenType::Variable])?;
                     let location = expr.loc.join(field_name.loc());
                     let id = match &expr.type_data {
@@ -579,6 +584,65 @@ impl Expr {
                         loc,
                         kind: ExprKind::ArrayIndex(Box::new(expr), indices),
                         type_data: element_type.clone(),
+                    }
+                }
+
+                Some(TokenType::LParen) => {
+                    let [start_token] = expect_tokens(ts, [TokenType::LParen])?;
+                    let args: Box<[Expr]> =
+                        parse_sequence(ts, env, TokenType::Comma, TokenType::RParen)?;
+                    let [end_token] = expect_tokens(ts, [TokenType::RParen])?;
+                    let loc = start_token.loc().join(end_token.loc());
+
+                    match expr.type_data() {
+                        TypeVal::FnPointer(expected_args, ret_type) => {
+                            if args.len() != expected_args.len() {
+                                return Err(miette!(
+                                    severity = Severity::Error,
+                                    labels = vec![LabeledSpan::new(
+                                        Some(format!(
+                                            "Expected {} arguments, found {}",
+                                            expected_args.len(),
+                                            args.len(),
+                                        )),
+                                        loc.start(),
+                                        loc.len(),
+                                    )],
+                                    "Incorrect number of arguments for function pointer of type: {}",
+                                    expr.type_data.as_str(env)
+
+                                ));
+                            }
+
+                            for (arg, expected_type) in args.iter().zip(expected_args) {
+                                arg.expect_type(expected_type, env)?;
+                            }
+                            let type_data = ret_type.as_ref().clone();
+
+                            expr = Self {
+                                loc,
+                                kind: ExprKind::FunctionPtrCall(Box::new(expr), args),
+                                type_data,
+                            }
+                        }
+                        _ => {
+                            return Err(miette!(
+                                severity = Severity::Error,
+                                labels = vec![LabeledSpan::new(
+                                    Some(format!(
+                                        "expected type: fn({}) -> ?, found: {}",
+                                        args.iter()
+                                            .map(|a| a.type_data.as_str(env))
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
+                                        expr.type_data.as_str(env)
+                                    )),
+                                    loc.start(),
+                                    loc.len(),
+                                )],
+                                "Type mismatch"
+                            ))
+                        }
                     }
                 }
                 _ => break expr,
@@ -912,6 +976,13 @@ impl SExpr for Expr {
                 "(CallExpr{} {}{})",
                 ty,
                 span.as_str(env.src()),
+                Displayable(args, env, opt),
+            ),
+            ExprKind::FunctionPtrCall(expr, args) => write!(
+                f,
+                "(CallExpr{} {}{})",
+                ty,
+                Displayable(expr.as_ref(), env, opt),
                 Displayable(args, env, opt),
             ),
             ExprKind::FieldAccess(expr, span) => {

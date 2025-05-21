@@ -571,6 +571,9 @@ fn expr_to_ident<'b>(expr: &Expr, cenv: &mut CGenEnv<'_, 'b>) -> Ident<'b> {
 
             write_assign_stmt!(cenv, fn_info.ret(), "{}({})", fn_info.name(), fn_args)
         }
+        ExprKind::FunctionPtrCall(name, exprs) => {
+            todo!();
+        }
         ExprKind::FieldAccess(struct_expr, span) => {
             let struct_ident = expr_to_ident(struct_expr, cenv);
             write_assign_stmt!(

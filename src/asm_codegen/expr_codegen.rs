@@ -133,19 +133,11 @@ impl<'a> AsmEnv<'a> {
                 }
             }
             ExprKind::FunctionCall(name, args) => {
-                let fn_name = match &self
-                    .env
-                    .get_variable_info(*name, self.cur_scope)
-                    .map(|fn_info| fn_info.var_type())
-                {
-                    Ok(var_type @ TypeVal::FnPointer(_, _)) => {
-                        self.gen_asm_expr(&Expr::new(*name, ExprKind::Var, (*var_type).clone()));
-                        None
-                    }
-                    _ => Some(name.as_str(self.env.src())),
-                };
-
-                self.call_fn(fn_name, args, expr.type_data());
+                self.call_fn(Some(name.as_str(self.env.src())), args, expr.type_data());
+            }
+            ExprKind::FunctionPtrCall(fn_ptr, args) => {
+                self.gen_asm_expr(fn_ptr);
+                self.call_fn(None, args, expr.type_data());
             }
             ExprKind::FieldAccess(struct_expr, field_name) => {
                 self.gen_asm_expr(struct_expr);
@@ -168,7 +160,7 @@ impl<'a> AsmEnv<'a> {
                         .expect("field should exist after typechecking")
                         .1,
                 );
-                let size_diff = (self.env.type_size(struct_expr.type_data()) - field_size);
+                let size_diff = self.env.type_size(struct_expr.type_data()) - field_size;
                 self.copy(
                     field_size,
                     Reg::Rsp,
