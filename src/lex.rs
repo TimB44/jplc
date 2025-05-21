@@ -142,7 +142,7 @@ impl<'a> Iterator for Lexer<'a> {
                 Some(b']') => return Some(self.create_token(TokenType::RSquare, 1)),
 
                 // Simple operators
-                Some(b'+') | Some(b'-') | Some(b'*') | Some(b'%') => {
+                Some(b'+')  | Some(b'*') | Some(b'%') => {
                     return Some(self.create_token(TokenType::Op, 1));
                 }
 
@@ -349,11 +349,17 @@ impl<'a> Iterator for Lexer<'a> {
                 // These will be lexed in the following match statment as they need info about the
                 // next char
                 Some(b'\n') | Some(b' ') | Some(b'=') | Some(b'>') | Some(b'<') | Some(b'!')
-                | Some(b'&') | Some(b'|') | Some(b'/') | Some(b'\\') => (),
+                | Some(b'&') | Some(b'|') | Some(b'/') | Some(b'\\') | Some(b'-')=> (),
             };
 
             // More complex single and double character tokens
             match (self.bytes[self.cur], self.bytes.get(self.cur + 1)) {
+
+                (b'-', Some(b'>')) => return Some(self.create_token(TokenType::Arrow, 2)),
+                (b'-', _ ) => {
+                    return Some(self.create_token(TokenType::Op, 1));
+                }
+
                 (b'=', Some(b'=')) => return Some(self.create_token(TokenType::Op, 2)),
                 (b'=', _) => return Some(self.create_token(TokenType::Equals, 1)),
 
@@ -568,6 +574,7 @@ pub enum TokenType {
     Variable,
     Void,
     Write,
+    Arrow,
 }
 
 // Displays the type of token in a human readable form for error messages
@@ -614,6 +621,7 @@ impl Display for TokenType {
             TokenType::Variable => "variable identifier",
             TokenType::Void => "void keyword",
             TokenType::Write => "write keyword",
+            TokenType::Arrow => "arrow '->",
         };
         write!(f, "{}", description)
     }
@@ -663,6 +671,7 @@ impl Display for Token<'_> {
             TokenType::Variable => write!(f, "VARIABLE '{}'", self.bytes),
             TokenType::Void => write!(f, "VOID 'void'"),
             TokenType::Write => write!(f, "WRITE 'write'"),
+            TokenType::Arrow => write!(f, "ARROW '->'"),
         }
     }
 }

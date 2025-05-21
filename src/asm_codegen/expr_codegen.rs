@@ -24,7 +24,7 @@ pub const FALSE_VALUE: u64 = 0;
 
 use super::{Asm, AsmEnv, ConstKind, Instr, MemLoc, Operand, Reg};
 
-impl AsmEnv<'_> {
+impl<'a> AsmEnv<'a> {
     pub fn gen_asm_expr(&mut self, expr: &Expr) {
         if self.gen_asm_expr_opt(expr) {
             return;
@@ -55,10 +55,20 @@ impl AsmEnv<'_> {
                 self.load_const(const_id);
             }
             ExprKind::Var => {
-                let var_info = self
-                    .env
-                    .get_variable_info(expr.loc(), self.cur_scope)
-                    .expect("variable should be valid after typechecking");
+                // Check for functions
+
+                let var_info = match self.env.get_variable_info(expr.loc(), self.cur_scope) {
+                    Ok(var_info) => var_info,
+                    Err(_) => {
+                        assert!(matches!(self.env.get_function(expr.loc()), Ok(_)));
+                        let fn_name = expr.loc().as_str(self.env.src());
+                        self.add_instrs([
+                            Instr::Lea(Reg::Rax, MemLoc::FnLabel(fn_name)),
+                            Instr::Push(Operand::Reg(Reg::Rax)),
+                        ]);
+                        return;
+                    }
+                };
                 let type_size = self.env.type_size(var_info.var_type());
                 let is_local = self.env.is_local_var(expr.loc(), self.cur_scope);
                 // offset are from ebp which is 16 bytes after the start of the stack frame
@@ -107,7 +117,7 @@ impl AsmEnv<'_> {
                 self.add_instrs([Instr::Mov(Operand::Reg(Reg::Rdi), Operand::Value(arr_size))]);
 
                 let stack_aligend = self.align_stack(0);
-                self.add_instrs([Instr::Call("jpl_alloc")]);
+                self.add_instrs([Instr::Call(Operand::Label("jpl_alloc"))]);
                 self.remove_stack_alignment(stack_aligend);
                 self.copy(arr_size, Reg::Rsp, 0, Reg::Rax, 0);
                 self.add_instrs([
@@ -123,12 +133,11 @@ impl AsmEnv<'_> {
                 }
             }
             ExprKind::FunctionCall(name, args) => {
-                let fn_info = self
-                    .env
-                    .get_function(*name)
-                    .expect("function should exist after typechecking");
-
-                self.call_fn(fn_info.name(), args, fn_info.ret());
+                self.call_fn(Some(name.as_str(self.env.src())), args, expr.type_data());
+            }
+            ExprKind::FunctionPtrCall(fn_ptr, args) => {
+                self.gen_asm_expr(fn_ptr);
+                self.call_fn(None, args, expr.type_data());
             }
             ExprKind::FieldAccess(struct_expr, field_name) => {
                 self.gen_asm_expr(struct_expr);
@@ -151,7 +160,7 @@ impl AsmEnv<'_> {
                         .expect("field should exist after typechecking")
                         .1,
                 );
-                let size_diff = (self.env.type_size(struct_expr.type_data()) - field_size);
+                let size_diff = self.env.type_size(struct_expr.type_data()) - field_size;
                 self.copy(
                     field_size,
                     Reg::Rsp,
@@ -343,7 +352,7 @@ impl AsmEnv<'_> {
                     self.gen_div_mod(args, false);
                 }
                 TypeVal::Float => {
-                    self.call_fn("fmod", args.as_ref(), &TypeVal::Float);
+                    self.call_fn(Some("fmod"), args.as_ref(), &TypeVal::Float);
                 }
                 _ => unreachable!(),
             },
@@ -475,7 +484,7 @@ impl AsmEnv<'_> {
     fn arithmetic_binop(
         &mut self,
         args: &[Expr; 2],
-        instr: fn(Operand, Operand) -> Instr<'static>,
+        instr: fn(Operand<'a>, Operand<'a>) -> Instr<'a>,
     ) {
         let [lhs, rhs] = args;
         self.gen_asm_expr(rhs);
@@ -658,7 +667,7 @@ impl AsmEnv<'_> {
             self.add_asm([Asm::JumpLabel(ok_jmp)])
         }
         let stack_was_aligned = self.align_stack(0);
-        self.add_instrs([Instr::Call("jpl_alloc")]);
+        self.add_instrs([Instr::Call(Operand::Label("jpl_alloc"))]);
         self.remove_stack_alignment(stack_was_aligned);
     }
 

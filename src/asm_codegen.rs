@@ -188,10 +188,18 @@ impl<'a> AsmEnv<'a> {
         jmp
     }
 
-    fn call_fn(&mut self, name: &'a str, args: &[Expr], ret_type: &TypeVal) {
+    fn call_fn(&mut self, name: Option<&'a str>, args: &[Expr], ret_type: &TypeVal) {
+        if let None = name {
+            self.add_instrs([Instr::Pop(Reg::Rax)])
+        }
+
         let avaliable_int_args = INT_REGS_FOR_ARGS.len() - {
             match ret_type {
-                TypeVal::Int | TypeVal::Bool | TypeVal::Float | TypeVal::Void => 0,
+                TypeVal::Int
+                | TypeVal::Bool
+                | TypeVal::Float
+                | TypeVal::Void
+                | TypeVal::FnPointer(_, _) => 0,
                 TypeVal::Array(_, _) | TypeVal::Struct(_) => {
                     self.add_instrs([Instr::Sub(
                         Operand::Reg(Reg::Rsp),
@@ -202,10 +210,20 @@ impl<'a> AsmEnv<'a> {
             }
         };
 
+        if let None = name {
+            self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))]);
+        }
+
+        let stack_when_fn_pointer_pushed = self.cur_stack_size();
         let num_int_args = args
             .iter()
             .map(|e| e.type_data())
-            .filter(|t| matches!(t, TypeVal::Int | TypeVal::Bool | TypeVal::Void))
+            .filter(|t| {
+                matches!(
+                    t,
+                    TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _)
+                )
+            })
             .count();
 
         let num_float_args = args
@@ -222,7 +240,7 @@ impl<'a> AsmEnv<'a> {
             .rev()
             .filter(|e| match e.type_data() {
                 TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
-                TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+                TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                     cur_int_arg -= 1;
                     cur_int_arg >= avaliable_int_args
                 }
@@ -240,7 +258,7 @@ impl<'a> AsmEnv<'a> {
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
             TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
-            TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+            TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                 cur_int_arg -= 1;
                 cur_int_arg >= avaliable_int_args
             }
@@ -256,7 +274,7 @@ impl<'a> AsmEnv<'a> {
         let mut cur_float_arg = num_float_args;
         for stack_args in args.iter().rev().filter(|e| match e.type_data() {
             TypeVal::Array(_, _) | TypeVal::Struct(_) => false,
-            TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+            TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                 cur_int_arg -= 1;
                 cur_int_arg < avaliable_int_args
             }
@@ -272,7 +290,7 @@ impl<'a> AsmEnv<'a> {
         let mut cur_float_arg = 0;
         for arg in args {
             match arg.type_data() {
-                TypeVal::Int | TypeVal::Bool | TypeVal::Void
+                TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _)
                     if cur_int_arg < avaliable_int_args =>
                 {
                     self.add_instrs([Instr::Pop(INT_REGS_FOR_ARGS[cur_int_arg])]);
@@ -288,14 +306,30 @@ impl<'a> AsmEnv<'a> {
 
         // Load value for retval if needed
         if matches!(ret_type, TypeVal::Array(_, _) | TypeVal::Struct(_)) {
-            let offset = stack_space_for_args + if stack_aligned { WORD_SIZE } else { 0 };
+            let offset = stack_space_for_args
+                + if stack_aligned { WORD_SIZE } else { 0 }
+                + if let None = name { WORD_SIZE } else { 0 };
             self.add_instrs([Instr::Lea(
                 INT_REGS_FOR_ARGS[0],
                 MemLoc::RegOffset(Reg::Rsp, offset as i64),
             )]);
         }
 
-        self.add_instrs([Instr::Call(name)]);
+        if let None = name {
+            let cur_stack_size = self.cur_stack_size();
+            self.add_instrs([Instr::Mov(
+                Operand::Reg(Reg::Rax),
+                Operand::Mem(MemLoc::RegOffset(
+                    Reg::Rsp,
+                    (cur_stack_size - stack_when_fn_pointer_pushed) as i64,
+                )),
+            )]);
+        }
+
+        self.add_instrs([Instr::Call(
+            name.map(|s| Operand::Label(s))
+                .unwrap_or(Operand::Reg(Reg::Rax)),
+        )]);
         if stack_space_for_args > 0 {
             let mut cur_int_arg = 0;
             let mut cur_float_arg = 0;
@@ -303,7 +337,7 @@ impl<'a> AsmEnv<'a> {
                 args.iter()
                     .filter(|e| match e.type_data() {
                         TypeVal::Array(_, _) | TypeVal::Struct(_) => true,
-                        TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+                        TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                             cur_int_arg += 1;
                             cur_int_arg >= avaliable_int_args
                         }
@@ -322,8 +356,18 @@ impl<'a> AsmEnv<'a> {
         }
 
         self.remove_stack_alignment(stack_aligned);
+
+        if let None = name {
+            self.add_asm([
+                Asm::Comment("Removing function pointer after call"),
+                Asm::Instr(Instr::Add(
+                    Operand::Reg(Reg::Rsp),
+                    Operand::Value(WORD_SIZE),
+                )),
+            ]);
+        }
         match ret_type {
-            TypeVal::Int | TypeVal::Void | TypeVal::Bool => {
+            TypeVal::Int | TypeVal::Void | TypeVal::Bool | TypeVal::FnPointer(_, _) => {
                 self.add_instrs([Instr::Push(Operand::Reg(Reg::Rax))])
             }
             TypeVal::Float => self.add_instrs([Instr::Push(Operand::Reg(Reg::Xmm0))]),
@@ -359,7 +403,7 @@ impl<'a> AsmEnv<'a> {
         let stack_was_aligned = self.align_stack(0);
         self.add_instrs([
             Instr::Lea(Reg::Rdi, MemLoc::Const(msg)),
-            Instr::Call("fail_assertion"),
+            Instr::Call(Operand::Label("fail_assertion")),
         ]);
         self.remove_stack_alignment(stack_was_aligned);
     }
@@ -499,6 +543,10 @@ impl<'a> AsmEnv<'a> {
         self.fail_assertion(msg_id);
         self.add_asm([Asm::JumpLabel(ok_jmp)]);
     }
+
+    fn cur_stack_size(&self) -> u64 {
+        self.fns[self.cur_fn].cur_stack_size
+    }
 }
 
 impl<'a> AsmFn<'a> {
@@ -528,20 +576,20 @@ enum Asm<'a> {
 
 #[derive(Clone, Debug)]
 enum Instr<'a> {
-    Mov(Operand, Operand),
-    Lea(Reg, MemLoc),
+    Mov(Operand<'a>, Operand<'a>),
+    Lea(Reg, MemLoc<'a>),
     // does not have the leading _
-    Call(&'a str),
-    Push(Operand),
+    Call(Operand<'a>),
+    Push(Operand<'a>),
     Pop(Reg),
-    Add(Operand, Operand),
-    Sub(Operand, Operand),
+    Add(Operand<'a>, Operand<'a>),
+    Sub(Operand<'a>, Operand<'a>),
     Ret,
     Neg(Reg),
-    Xor(Operand, Operand),
-    And(Operand, Operand),
-    Mul(Operand, Operand),
-    Div(Operand, Operand),
+    Xor(Operand<'a>, Operand<'a>),
+    And(Operand<'a>, Operand<'a>),
+    Mul(Operand<'a>, Operand<'a>),
+    Div(Operand<'a>, Operand<'a>),
     // Always set register al
     Setl,
     Setg,
@@ -556,7 +604,7 @@ enum Instr<'a> {
     Cmpeq(Reg, Reg),
     Cmpneq(Reg, Reg),
 
-    Cmp(Operand, Operand),
+    Cmp(Operand<'a>, Operand<'a>),
     Jmp(u64),
     Jne(u64),
     Je(u64),
@@ -564,33 +612,29 @@ enum Instr<'a> {
     Jge(u64),
     Jno(u64),
     Jg(u64),
-    Shl(Operand, u8),
+    Shl(Operand<'a>, u8),
     Cqo,
 }
 
 #[derive(Clone, Debug)]
-enum Operand {
+enum Operand<'a> {
     Reg(Reg),
-    Mem(MemLoc),
+    Mem(MemLoc<'a>),
     Value(u64),
+    Label(&'a str),
 }
 
-impl Operand {
+impl Operand<'_> {
     fn kind(&self) -> Option<RegKind> {
         match self {
             Operand::Reg(reg) => Some(reg.kind()),
             Operand::Mem(_) => None,
-            Operand::Value(_) => Some(RegKind::Int),
+            Operand::Label(_) | Operand::Value(_) => Some(RegKind::Int),
         }
     }
 
     fn args_kind(&self, rhs: &Self) -> RegKind {
         match (self, rhs) {
-            (Operand::Mem(_), Operand::Mem(_))
-            | (Operand::Value(_), Operand::Reg(_))
-            | (Operand::Value(_), Operand::Mem(_))
-            | (Operand::Value(_), Operand::Value(_)) => unreachable!(),
-
             (Operand::Reg(lhs), Operand::Reg(rhs)) => {
                 let kind = lhs.kind();
                 assert_eq!(kind, rhs.kind());
@@ -600,6 +644,8 @@ impl Operand {
             (_, Operand::Reg(reg)) => reg.kind(),
 
             (Operand::Mem(_), Operand::Value(_)) => RegKind::Int,
+
+            _ => unreachable!(),
         }
     }
 }
@@ -661,12 +707,13 @@ impl Reg {
 }
 
 #[derive(Clone, Debug)]
-enum MemLoc {
+enum MemLoc<'a> {
     GlobalOffset(i64, u64),
     LocalOffset(i64, u64),
     Const(u64),
     Reg(Reg),
     RegOffset(Reg, i64),
+    FnLabel(&'a str),
 }
 
 #[derive(Clone, Debug)]

@@ -69,7 +69,7 @@ impl Display for Instr<'_> {
                 }
             },
             Instr::Lea(reg, mem_loc) => write!(f, "lea {}, {}", reg, mem_loc),
-            Instr::Call(name) => write!(f, "call _{}", name),
+            Instr::Call(name) => write!(f, "call {}", name),
             Instr::Push(Operand::Reg(reg)) => match reg.kind() {
                 RegKind::Int => {
                     write!(f, "push {}", reg)
@@ -173,12 +173,13 @@ impl Display for Instr<'_> {
     }
 }
 
-impl Display for Operand {
+impl Display for Operand<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Operand::Reg(reg) => write!(f, "{}", reg),
             Operand::Mem(mem_loc) => write!(f, "{}", mem_loc),
             Operand::Value(v) => write!(f, "{}", v),
+            Operand::Label(label) => write!(f, "_{}", label),
         }
     }
 }
@@ -209,12 +210,13 @@ impl Display for Reg {
     }
 }
 
-impl Display for MemLoc {
+impl Display for MemLoc<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             MemLoc::GlobalOffset(offset, add) => write!(f, "[{} - {} + {}]", Reg::R12, offset, add),
             MemLoc::LocalOffset(offset, add) => write!(f, "[{} - {} + {}]", Reg::Rbp, offset, add),
             MemLoc::Const(id) => write!(f, "[rel const{}]", id),
+            MemLoc::FnLabel(name) => write!(f, "[rel _{}]", name),
             MemLoc::Reg(reg) => write!(f, "[{}]", reg),
             MemLoc::RegOffset(reg, offset) => write!(
                 f,

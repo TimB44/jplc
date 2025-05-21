@@ -373,7 +373,7 @@ impl<'a> Environment<'a> {
 
     pub fn get_variable_type(&self, var: Span) -> miette::Result<&TypeVal> {
         self.get_variable_info(var, self.cur_scope)
-            .map(|var_info| &var_info.var_type)
+            .map(|var_info| var_info.var_type())
     }
 
     pub fn functions(&self) -> &HashMap<&'a str, FunctionInfo<'a>> {
@@ -382,7 +382,11 @@ impl<'a> Environment<'a> {
 
     pub fn type_size(&self, ty: &TypeVal) -> u64 {
         match ty {
-            TypeVal::Int | TypeVal::Bool | TypeVal::Float | TypeVal::Void => WORD_SIZE,
+            TypeVal::Int
+            | TypeVal::Bool
+            | TypeVal::Float
+            | TypeVal::Void
+            | TypeVal::FnPointer(_, _) => WORD_SIZE,
             TypeVal::Array(_, dims) => WORD_SIZE + WORD_SIZE * *dims as u64,
             TypeVal::Struct(id) => self.get_struct_id(*id).size,
             // IDK if this is correct.

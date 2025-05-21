@@ -167,7 +167,7 @@ impl Parse for Binding {
         let lvalue = LValue::parse(ts, env)?;
         expect_tokens(ts, [TokenType::Colon])?;
         let variable_type = Type::parse(ts, env)?;
-        let loc = lvalue.loc.join(variable_type.location());
+        let loc = lvalue.loc.join(variable_type.loc());
 
         Ok(Self {
             loc,

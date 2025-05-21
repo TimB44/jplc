@@ -108,6 +108,7 @@ pub enum ExprKind {
     ArrayLit(Box<[Expr]>),
     StructInit(Span, Box<[Expr]>),
     FunctionCall(Span, Box<[Expr]>),
+    FunctionPtrCall(Box<Expr>, Box<[Expr]>),
 
     // Left recursive, handled specially
     FieldAccess(Box<Expr>, Span),
@@ -196,6 +197,14 @@ fn parse_binary_op(
 //TODO move to auxiliary
 
 impl Expr {
+    pub fn new(loc: Span, kind: ExprKind, type_data: TypeVal) -> Self {
+        Self {
+            loc,
+            kind,
+            type_data,
+        }
+    }
+
     pub fn loc(&self) -> Span {
         self.loc
     }
@@ -462,7 +471,11 @@ impl Expr {
             (Some(TokenType::Variable), Some(TokenType::LCurly)) => {
                 Self::parse_struct_init(ts, env)
             }
-            (Some(TokenType::Variable), Some(TokenType::LParen)) => Self::parse_fn_call(ts, env),
+            (Some(TokenType::Variable), Some(TokenType::LParen))
+                if env.get_function(ts.peek().unwrap().loc()).is_ok() =>
+            {
+                Self::parse_fn_call(ts, env)
+            }
             (Some(TokenType::Variable), _) => Self::parse_var(ts, env),
             (Some(t), _) => Err(miette!(
                 severity = Severity::Error,
@@ -486,7 +499,7 @@ impl Expr {
         Ok(loop {
             match ts.peek_type() {
                 Some(TokenType::Dot) => {
-                    _ = expect_tokens(ts, [TokenType::Dot])?;
+                    expect_tokens(ts, [TokenType::Dot])?;
                     let [field_name] = expect_tokens(ts, [TokenType::Variable])?;
                     let location = expr.loc.join(field_name.loc());
                     let id = match &expr.type_data {
@@ -573,6 +586,65 @@ impl Expr {
                         type_data: element_type.clone(),
                     }
                 }
+
+                Some(TokenType::LParen) => {
+                    let [start_token] = expect_tokens(ts, [TokenType::LParen])?;
+                    let args: Box<[Expr]> =
+                        parse_sequence(ts, env, TokenType::Comma, TokenType::RParen)?;
+                    let [end_token] = expect_tokens(ts, [TokenType::RParen])?;
+                    let loc = start_token.loc().join(end_token.loc());
+
+                    match expr.type_data() {
+                        TypeVal::FnPointer(expected_args, ret_type) => {
+                            if args.len() != expected_args.len() {
+                                return Err(miette!(
+                                    severity = Severity::Error,
+                                    labels = vec![LabeledSpan::new(
+                                        Some(format!(
+                                            "Expected {} arguments, found {}",
+                                            expected_args.len(),
+                                            args.len(),
+                                        )),
+                                        loc.start(),
+                                        loc.len(),
+                                    )],
+                                    "Incorrect number of arguments for function pointer of type: {}",
+                                    expr.type_data.as_str(env)
+
+                                ));
+                            }
+
+                            for (arg, expected_type) in args.iter().zip(expected_args) {
+                                arg.expect_type(expected_type, env)?;
+                            }
+                            let type_data = ret_type.as_ref().clone();
+
+                            expr = Self {
+                                loc,
+                                kind: ExprKind::FunctionPtrCall(Box::new(expr), args),
+                                type_data,
+                            }
+                        }
+                        _ => {
+                            return Err(miette!(
+                                severity = Severity::Error,
+                                labels = vec![LabeledSpan::new(
+                                    Some(format!(
+                                        "expected type: fn({}) -> ?, found: {}",
+                                        args.iter()
+                                            .map(|a| a.type_data.as_str(env))
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
+                                        expr.type_data.as_str(env)
+                                    )),
+                                    loc.start(),
+                                    loc.len(),
+                                )],
+                                "Type mismatch"
+                            ))
+                        }
+                    }
+                }
                 _ => break expr,
             }
         })
@@ -655,11 +727,22 @@ impl Expr {
 
     fn parse_var(ts: &mut TokenStream, env: &mut Environment) -> miette::Result<Self> {
         let [var_token] = expect_tokens(ts, [TokenType::Variable])?;
-        let var_type = env.get_variable_type(var_token.loc())?;
+        let var_type = env
+            .get_variable_type(var_token.loc())
+            .map(|t| t.clone())
+            .or_else(|_| {
+                env.get_function(var_token.loc()).map(|fn_info| {
+                    TypeVal::FnPointer(
+                        fn_info.args().to_vec().into_boxed_slice(),
+                        Box::new(fn_info.ret().clone()),
+                    )
+                })
+            })?;
+
         Ok(Self {
             loc: var_token.loc(),
             kind: ExprKind::Var,
-            type_data: var_type.clone(),
+            type_data: var_type,
         })
     }
 
@@ -738,14 +821,21 @@ impl Expr {
         let [r_curly_token] = expect_tokens(ts, [TokenType::RParen])?;
         let loc = fn_name.loc().join(r_curly_token.loc());
 
-        let fn_info = env.get_function(fn_name.loc())?;
-        if args.len() != fn_info.args().len() {
+        // Check for function or variables with a matching name
+        let (expected_args, expected_ret) = env
+            .get_function(fn_name.loc())
+            .map(|fn_info| (fn_info.args(), fn_info.ret()))
+            .or_else(|err| match env.get_variable_type(fn_name.loc()) {
+                Ok(TypeVal::FnPointer(args, ret)) => Ok((args.as_ref(), ret.as_ref())),
+                _ => Err(err),
+            })?;
+        if args.len() != expected_args.len() {
             return Err(miette!(
                 severity = Severity::Error,
                 labels = vec![LabeledSpan::new(
                     Some(format!(
                         "Expected {} arguments, found {}",
-                        fn_info.args().len(),
+                        expected_args.len(),
                         args.len(),
                     )),
                     loc.start(),
@@ -756,14 +846,14 @@ impl Expr {
             ));
         }
 
-        for (arg, expected_type) in args.iter().zip(fn_info.args()) {
+        for (arg, expected_type) in args.iter().zip(expected_args) {
             arg.expect_type(expected_type, env)?;
         }
 
         Ok(Expr {
             loc,
             kind: ExprKind::FunctionCall(fn_name.loc(), args),
-            type_data: fn_info.ret().clone(),
+            type_data: expected_ret.clone(),
         })
     }
 
@@ -886,6 +976,13 @@ impl SExpr for Expr {
                 "(CallExpr{} {}{})",
                 ty,
                 span.as_str(env.src()),
+                Displayable(args, env, opt),
+            ),
+            ExprKind::FunctionPtrCall(expr, args) => write!(
+                f,
+                "(CallExpr{} {}{})",
+                ty,
+                Displayable(expr.as_ref(), env, opt),
                 Displayable(args, env, opt),
             ),
             ExprKind::FieldAccess(expr, span) => {

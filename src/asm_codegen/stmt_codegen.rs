@@ -17,7 +17,7 @@ impl AsmEnv<'_> {
             StmtType::Return(expr) => {
                 self.gen_asm_expr(expr);
                 match expr.type_data() {
-                    TypeVal::Int | TypeVal::Bool | TypeVal::Void => {
+                    TypeVal::Int | TypeVal::Bool | TypeVal::Void | TypeVal::FnPointer(_, _) => {
                         self.add_instrs([Instr::Pop(Reg::Rax)])
                     }
                     TypeVal::Float => self.add_instrs([Instr::Pop(Reg::Xmm0)]),
